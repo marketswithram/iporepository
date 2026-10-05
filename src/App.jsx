@@ -1,0 +1,77 @@
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { AuthProvider } from './context/AuthContext'
+import { ProtectedRoute, AdminRoute, PublicOnlyRoute } from './routes/RouteGuards'
+
+import PublicLayout  from './layouts/PublicLayout'
+import UserLayout    from './layouts/UserLayout'
+import AdminLayout   from './layouts/AdminLayout'
+
+import Home         from './pages/public/Home'
+import About        from './pages/public/About'
+import HowItWorks   from './pages/public/HowItWorks'
+import PublicIpos   from './pages/public/PublicIpos'
+import Login        from './pages/public/Login'
+import Register     from './pages/public/Register'
+
+import UserDashboard  from './pages/user/Dashboard'
+import AvailableIpos  from './pages/user/AvailableIpos'
+import Apply          from './pages/user/Apply'
+import History        from './pages/user/History'
+import ProfitLoss     from './pages/user/ProfitLoss'
+import UserProfile    from './pages/user/Profile'
+import IpoResult      from './pages/user/IpoResult'
+
+import AdminDashboard from './pages/admin/Dashboard'
+import IpoList        from './pages/admin/ipos/IpoList'
+import CreateIpo      from './pages/admin/ipos/CreateIpo'
+import IpoDetails     from './pages/admin/ipos/IpoDetails'
+import ImportResults  from './pages/admin/ipos/ImportResults'
+import AdminUsers     from './pages/admin/Users'
+import AdminReports   from './pages/admin/Reports'
+import NotFound       from './pages/NotFound'
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <AuthProvider>
+        <Routes>
+          {/* PUBLIC */}
+          <Route element={<PublicLayout />}>
+            <Route path="/"             element={<Home />} />
+            <Route path="/about"        element={<About />} />
+            <Route path="/how-it-works" element={<HowItWorks />} />
+            <Route path="/ipos"         element={<PublicIpos />} />
+            <Route path="/login"    element={<PublicOnlyRoute><Login /></PublicOnlyRoute>} />
+            <Route path="/register" element={<PublicOnlyRoute><Register /></PublicOnlyRoute>} />
+          </Route>
+
+          {/* USER */}
+          <Route path="/user" element={<ProtectedRoute><UserLayout /></ProtectedRoute>}>
+            <Route index element={<Navigate to="dashboard" replace />} />
+            <Route path="dashboard"             element={<UserDashboard />} />
+            <Route path="ipos"                  element={<AvailableIpos />} />
+            <Route path="apply/:ipoId"          element={<Apply />} />
+            <Route path="ipos/:participationId" element={<IpoResult />} />
+            <Route path="history"               element={<History />} />
+            <Route path="profit-loss"           element={<ProfitLoss />} />
+            <Route path="profile"               element={<UserProfile />} />
+          </Route>
+
+          {/* ADMIN */}
+          <Route path="/admin" element={<AdminRoute><AdminLayout /></AdminRoute>}>
+            <Route index element={<Navigate to="dashboard" replace />} />
+            <Route path="dashboard"             element={<AdminDashboard />} />
+            <Route path="ipos"                  element={<IpoList />} />
+            <Route path="ipos/create"           element={<CreateIpo />} />
+            <Route path="ipos/:ipoId"           element={<IpoDetails />} />
+            <Route path="ipos/:ipoId/results"   element={<ImportResults />} />
+            <Route path="users"                 element={<AdminUsers />} />
+            <Route path="reports"               element={<AdminReports />} />
+          </Route>
+
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </AuthProvider>
+    </BrowserRouter>
+  )
+}
