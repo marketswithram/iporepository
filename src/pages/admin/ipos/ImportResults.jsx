@@ -63,7 +63,7 @@ export default function ImportResults() {
       })
       const results = validRows.map(row => ({
         participation_id:        row.participationId,
-        applied:                 row.parsed.applied ?? false,
+        applied:                 row.parsed.applied ?? true,
         allotted:                row.parsed.allotted ?? false,
         lots:                    row.parsed.lots ?? 0,
         applied_from:            row.parsed.applied_from ?? null,
@@ -91,7 +91,10 @@ export default function ImportResults() {
         <div className="text-5xl mb-4">🎉</div>
         <h2 className="text-xl font-bold text-gray-900 mb-2">Results Submitted!</h2>
         <p className="text-gray-500 text-sm mb-2"><strong>{submitResult?.rows_submitted}</strong> results recorded for <strong>{ipo?.ipo_name}</strong>.</p>
-        <p className="text-green-600 font-semibold mb-6">IPO status set to COMPLETED</p>
+        <p className="text-green-600 font-semibold mb-2">IPO status set to COMPLETED</p>
+        <p className="text-xs text-gray-400 mb-6">
+          Profit distributed using 80/20 rule (same person = 100%, different people = 80% investor / 20% account holder).
+        </p>
         <Link to={`/admin/ipos/${ipoId}`} className="btn bg-indigo-600 text-white hover:bg-indigo-700">← Back to IPO</Link>
       </div>
     </div>
@@ -112,7 +115,7 @@ export default function ImportResults() {
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
           <div className="px-6 py-4 border-b border-gray-100">
             <h2 className="section-title">Step 1 — Paste or Upload Result Data</h2>
-            <p className="text-sm text-gray-500 mt-1">Copy rows from Excel and paste below. Supports tab-separated and CSV formats.</p>
+            <p className="text-sm text-gray-500 mt-1">Copy rows from Excel and paste below. Supports tab-separated (TSV) and CSV formats.</p>
           </div>
           <div className="px-6 py-5 space-y-4">
             <div className="flex items-center gap-3">
@@ -122,14 +125,18 @@ export default function ImportResults() {
             </div>
             <textarea id="result-paste-area" value={pasteText} onChange={e => { setPasteText(e.target.value); setError('') }}
               className="input font-mono text-xs h-64 resize-y whitespace-pre"
-              placeholder={`Paste CSV/Excel data here. Your column format:\nS.NO,INVESTOR NAME,AMOUNT CONTRIBUTED,APPLIED FROM,LOTS,APPLIED AMOUNT,ALLOTED?,REFUND,PROFIT SHARE,TAX RESERVE,FINAL SETTLEMENT\n1,Satish Kumar A 45,14880,Ramprakash,1,14880,No,14880,222,0,222\n2,Satish Kumar A 56,14880,Karthika Ram,1,14880,No,14880,222,888,222`} />
+              placeholder={`Paste Excel data here. Expected column format (tab-separated):\nS.No\tInvestor Name\tAmount Contributed\tApplied From\tLots\tApplied Amount\tAllotted\tRefund\tProfit Share\tTax Reserve\tFinal Settlement\n1\tRamprakash\t14586\tRamprakash\t1\t14586\tNo\t14586\t760\t0\t760\n2\tRamprakash\t14586\tSandheep\t1\t14586\tNo\t14586\t760\t0\t760`} />
             <div className="alert-info text-xs">
               <span>ℹ</span>
               <div>
-                <strong>Your CSV columns (in order):</strong>{' '}
-                S.NO · INVESTOR NAME · AMOUNT CONTRIBUTED · APPLIED FROM · LOTS ·
-                APPLIED AMOUNT · ALLOTED? · REFUND · PROFIT SHARE · TAX RESERVE · FINAL SETTLEMENT
-                <br /><span className="text-gray-500">Matching order: Username → Full Name. Copy rows directly from Excel or upload as .csv</span>
+                <strong>Expected column order (11 columns):</strong><br />
+                S.No · Investor Name · Amount Contributed · Applied From · Lots ·
+                Applied Amount · Allotted · Refund · Profit Share · Tax Reserve · Final Settlement
+                <br /><span className="text-gray-500 mt-1 block">
+                  Matching: rows are matched to participation records by <strong>Investor Name + Applied From</strong> (full names or usernames).
+                  If Investor Name = Applied From → investor gets 100% of Profit Share.
+                  If different → investor 80%, account holder 20%.
+                </span>
               </div>
             </div>
             <button id="parse-btn" onClick={handleParse} disabled={!pasteText.trim()} className="btn bg-indigo-600 text-white hover:bg-indigo-700">
@@ -168,6 +175,33 @@ export default function ImportResults() {
             </div>
           )}
 
+          {/* Profit Distribution Preview */}
+          {validRows.length > 0 && (
+            <div className="bg-indigo-50 border border-indigo-200 rounded-xl px-6 py-4">
+              <p className="text-sm font-semibold text-indigo-900 mb-2">💰 Profit Distribution Preview</p>
+              <div className="space-y-1">
+                {validRows.map((row, i) => {
+                  const profit = row.parsed.profit ?? 0
+                  const isSame = !row.parsed.applied_from ||
+                    row.parsed.applied_from.toLowerCase() === row.parsed.name.toLowerCase()
+                  const investorShare = isSame ? profit : Math.round(profit * 0.8 * 100) / 100
+                  const holderShare   = isSame ? 0 : Math.round(profit * 0.2 * 100) / 100
+                  return (
+                    <div key={i} className="text-xs text-indigo-800 flex flex-wrap gap-x-3">
+                      <span className="font-medium">Row {row.rowNumber}:</span>
+                      <span>{row.parsed.name} → ₹{investorShare.toFixed(2)}</span>
+                      {!isSame && row.parsed.applied_from && (
+                        <span className="text-indigo-600">{row.parsed.applied_from} → ₹{holderShare.toFixed(2)}</span>
+                      )}
+                      {isSame && <span className="text-green-700">(100% to investor)</span>}
+                      {!isSame && <span className="text-amber-700">(80/20 split)</span>}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Preview Table */}
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
             <div className="px-6 py-4 border-b border-gray-100">
@@ -178,9 +212,9 @@ export default function ImportResults() {
               <table className="table text-xs">
                 <thead>
                   <tr>
-                    <th>#</th><th>Name</th><th>Match</th><th>Applied</th>
+                    <th>#</th><th>Investor Name</th><th>Applied From</th><th>Match</th>
                     <th>Allotted</th><th>Lots</th><th>Refund</th>
-                    <th>Profit</th><th>Tax</th><th>Settlement</th><th>Issues</th>
+                    <th>Profit Share</th><th>Tax</th><th>Settlement</th><th>Issues</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -191,12 +225,12 @@ export default function ImportResults() {
                         {row.parsed.name || <span className="text-red-400">—</span>}
                         {row.matchedProfile && <p className="text-green-600">@{row.matchedProfile.username}</p>}
                       </td>
+                      <td className="text-gray-600">{row.parsed.applied_from || <span className="text-gray-400">—</span>}</td>
                       <td>
                         <span className={row.matchStatus === 'MATCHED' ? 'badge badge-green' : row.matchStatus === 'AMBIGUOUS' ? 'badge badge-yellow' : 'badge badge-red'}>
                           {row.matchStatus}
                         </span>
                       </td>
-                      <td>{row.parsed.applied === true ? '✅' : row.parsed.applied === false ? '❌' : '?'}</td>
                       <td>{row.parsed.allotted === true ? '✅' : row.parsed.allotted === false ? '❌' : '?'}</td>
                       <td>{row.parsed.lots ?? '?'}</td>
                       <td>{row.parsed.refund != null ? formatCurrency(row.parsed.refund) : '?'}</td>

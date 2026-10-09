@@ -1,172 +1,9 @@
 import { useEffect, useState, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
-import { getUserParticipatedIpos } from '../../services/ipoService'
+import { getUserParticipatedIpos, getUserProfitLossSummary } from '../../services/ipoService'
 
-// Fallback demo ledger data matching the design mockup when user has no participations
-const DEMO_HISTORY_ROWS = [
-  {
-    id: 'demo-1',
-    name: 'Tata Technologies Ltd',
-    code: 'TATATECH',
-    dematInfo: 'IN301549 • CDSL',
-    holder: 'Satish Kumar',
-    lots: 1,
-    shares: 30,
-    amount: 15000,
-    amountType: 'Blocked',
-    status: 'SELECTED',
-    statusLabel: 'Selected',
-    profitText: '+₹15,240',
-    profitSub: '+101.6% listing',
-    settlementTitle: 'UPI Debited',
-    settlementSub: 'Shares in Demat',
-    settlementColor: 'emerald',
-    date: '18 Oct 2024',
-    time: '07:37 pm',
-    year: '2024',
-    category: 'Retail Individual',
-    isDemo: true,
-  },
-  {
-    id: 'demo-2',
-    name: 'Waaree Energies Ltd',
-    code: 'WAAREE',
-    dematInfo: 'IN301549 • CDSL',
-    holder: 'Satish Kumar',
-    lots: 1,
-    shares: 9,
-    amount: 13527,
-    amountType: 'Blocked',
-    status: 'PENDING',
-    statusLabel: 'Pending',
-    profitText: 'GMP: +₹1,475',
-    profitSub: 'Est. +98.1%',
-    settlementTitle: 'UPI Blocked',
-    settlementSub: 'HDFC Mandate Active',
-    settlementColor: 'amber',
-    date: '24 Oct 2024',
-    time: '06:45 pm',
-    year: '2024',
-    category: 'Retail Individual',
-    isDemo: true,
-  },
-  {
-    id: 'demo-3',
-    name: 'Hyundai Motor India',
-    code: 'HYUNDAI',
-    dematInfo: 'IN301549 • CDSL',
-    holder: 'Satish Kumar',
-    lots: 1,
-    shares: 7,
-    amount: 13720,
-    amountType: 'Released',
-    status: 'REJECTED',
-    statusLabel: 'Rejected',
-    profitText: 'Refunded',
-    profitSub: '₹0 listing loss',
-    settlementTitle: 'Mandate Released',
-    settlementSub: '₹13,720 unblocked',
-    settlementColor: 'slate',
-    date: '17 Oct 2024',
-    time: '03:15 pm',
-    year: '2024',
-    category: 'sHNI (₹2L - ₹10L)',
-    isDemo: true,
-  },
-  {
-    id: 'demo-4',
-    name: 'NTPC Green Energy Ltd',
-    code: 'NTPCGREEN',
-    dematInfo: 'IN301549 • CDSL',
-    holder: 'Satish Kumar',
-    lots: 2,
-    shares: 276,
-    amount: 29808,
-    amountType: 'Blocked',
-    status: 'APPLIED',
-    statusLabel: 'Applied',
-    profitText: '+₹2,210',
-    profitSub: '+7.4% Expected',
-    settlementTitle: 'Mandate Accepted',
-    settlementSub: 'UPI ASBA Blocked',
-    settlementColor: 'blue',
-    date: '21 Nov 2024',
-    time: '11:20 am',
-    year: '2024',
-    category: 'Shareholder',
-    isDemo: true,
-  },
-  {
-    id: 'demo-5',
-    name: 'Swiggy Limited',
-    code: 'SWIGGY',
-    dematInfo: 'IN301549 • CDSL',
-    holder: 'Satish Kumar',
-    lots: 1,
-    shares: 38,
-    amount: 14820,
-    amountType: 'Blocked',
-    status: 'SELECTED',
-    statusLabel: 'Selected',
-    profitText: '+₹2,546',
-    profitSub: '+17.1% listing',
-    settlementTitle: 'UPI Debited',
-    settlementSub: 'Shares in Demat',
-    settlementColor: 'emerald',
-    date: '08 Nov 2024',
-    time: '04:55 pm',
-    year: '2024',
-    category: 'Retail Individual',
-    isDemo: true,
-  },
-  {
-    id: 'demo-6',
-    name: 'Hexagon BioSciences Ltd',
-    code: 'HEXAGON',
-    dematInfo: 'IN301549 • CDSL',
-    holder: 'Satish Kumar',
-    lots: 1,
-    shares: 40,
-    amount: 14000,
-    amountType: 'Blocked',
-    status: 'SELECTED',
-    statusLabel: 'Selected',
-    profitText: '+₹3,840',
-    profitSub: '+28.2% listing',
-    settlementTitle: 'UPI Debited',
-    settlementSub: 'Allotment Credited',
-    settlementColor: 'emerald',
-    date: '02 Dec 2024',
-    time: '01:10 pm',
-    year: '2024',
-    category: 'Retail Individual',
-    isDemo: true,
-  },
-  {
-    id: 'demo-7',
-    name: 'Zinka Logistics (BlackBuck)',
-    code: 'ZINKA',
-    dematInfo: 'IN301549 • CDSL',
-    holder: 'Satish Kumar',
-    lots: 1,
-    shares: 54,
-    amount: 14742,
-    amountType: 'Released',
-    status: 'REJECTED',
-    statusLabel: 'Rejected',
-    profitText: 'Refunded',
-    profitSub: '₹0 listing loss',
-    settlementTitle: 'Mandate Released',
-    settlementSub: '₹14,742 unblocked',
-    settlementColor: 'slate',
-    date: '28 Nov 2024',
-    time: '10:14 am',
-    year: '2024',
-    category: 'Retail Individual',
-    isDemo: true,
-  },
-]
+
 
 function formatINR(val) {
   const num = Number(val) || 0
@@ -190,6 +27,7 @@ function formatDisplayTime(dateStr) {
 export default function History() {
   const { profile } = useAuth()
   const [participations, setParticipations] = useState([])
+  const [dbSummary, setDbSummary] = useState(null)
   const [loading, setLoading] = useState(true)
 
   // Filters state
@@ -209,9 +47,17 @@ export default function History() {
       try {
         setLoading(true)
         if (profile?.id) {
-          const { data } = await getUserParticipatedIpos({ page: 1, pageSize: 100, userId: profile.id })
-          if (isMounted && data) {
-            setParticipations(data)
+          const [partRes, sumRes] = await Promise.allSettled([
+            getUserParticipatedIpos({ page: 1, pageSize: 100, userId: profile.id }),
+            getUserProfitLossSummary(profile.id),
+          ])
+          if (isMounted) {
+            if (partRes.status === 'fulfilled' && partRes.value?.data) {
+              setParticipations(partRes.value.data)
+            }
+            if (sumRes.status === 'fulfilled' && sumRes.value) {
+              setDbSummary(sumRes.value)
+            }
           }
         }
       } catch (err) {
@@ -228,17 +74,17 @@ export default function History() {
 
   // Calculate summary stats
   const summary = useMemo(() => {
-    if (!hasRealData) {
+    if (!hasRealData && !dbSummary) {
       return {
-        totalApplications: 18,
-        companiesCount: 14,
-        allotted: 7,
-        missed: 11,
-        winRate: '38.8',
-        realizedProfit: 25500,
-        blockedCapital: 58500,
-        activeBidsCount: 3,
-        totalCapital: 142800,
+        totalApplications: 0,
+        companiesCount: 0,
+        allotted: 0,
+        missed: 0,
+        winRate: '0.0',
+        realizedProfit: 0,
+        blockedCapital: 0,
+        activeBidsCount: 0,
+        totalCapital: 0,
       }
     }
 
@@ -265,12 +111,20 @@ export default function History() {
         } else if (r.applied || r.refund_amount) {
           missed++
         }
-        totalProfit += Number(r.profit_amount ?? 0)
+        // Use user's actual profit share (80% / 20% / 100%)
+        const uProfit = p.user_profit !== undefined
+          ? Number(p.user_profit)
+          : Number(r.profit_amount ?? 0)
+        totalProfit += uProfit
       } else {
         blockedCap += bidAmt
         activeBids++
       }
     }
+
+    const finalRealizedProfit = dbSummary?.net_profit !== undefined
+      ? Number(dbSummary.net_profit)
+      : totalProfit
 
     const totalApps = participations.length
     const winRate = totalApps > 0 ? ((allotted / totalApps) * 100).toFixed(1) : '0.0'
@@ -281,17 +135,17 @@ export default function History() {
       allotted,
       missed,
       winRate,
-      realizedProfit: totalProfit,
+      realizedProfit: finalRealizedProfit,
       blockedCapital: blockedCap > 0 ? blockedCap : (activeBids > 0 ? activeBids * 14880 : 0),
       activeBidsCount: activeBids,
       totalCapital: totalCap,
     }
-  }, [hasRealData, participations])
+  }, [hasRealData, participations, dbSummary])
 
   // Normalise ledger items
   const ledgerItems = useMemo(() => {
     if (!hasRealData) {
-      return DEMO_HISTORY_ROWS
+      return []
     }
 
     return participations.map((p) => {
@@ -311,13 +165,14 @@ export default function History() {
       let settlementSub = 'UPI ASBA Blocked'
       let settlementColor = 'blue'
 
+      const uProfit = p.user_profit !== undefined
+        ? Number(p.user_profit)
+        : Number(r?.profit_amount ?? 0)
+
       if (r) {
         if (r.allotted) {
           status = 'SELECTED'
           statusLabel = 'Selected'
-          const pAmount = Number(r.profit_amount ?? 0)
-          profitText = pAmount > 0 ? `+₹${formatINR(pAmount)}` : `₹${formatINR(pAmount)}`
-          profitSub = pAmount > 0 ? '+ Listing Gain' : 'Settled'
           amountType = 'Debited'
           settlementTitle = 'UPI Debited'
           settlementSub = 'Shares in Demat'
@@ -325,8 +180,6 @@ export default function History() {
         } else if (r.refund_amount || r.applied === false) {
           status = 'REJECTED'
           statusLabel = 'Rejected'
-          profitText = 'Refunded'
-          profitSub = '₹0 listing loss'
           amountType = 'Released'
           settlementTitle = 'Mandate Released'
           settlementSub = r.refund_amount ? `₹${formatINR(r.refund_amount)} unblocked` : 'Mandate revoked'
@@ -334,11 +187,24 @@ export default function History() {
         } else {
           status = 'PENDING'
           statusLabel = 'Pending'
-          profitText = 'Awaiting Result'
-          profitSub = 'Mandate Active'
+          amountType = 'Blocked'
           settlementTitle = 'UPI Blocked'
           settlementSub = 'Mandate Active'
           settlementColor = 'amber'
+        }
+
+        // Show actual profit gained by user from this IPO
+        if (uProfit > 0) {
+          profitText = `+₹${formatINR(uProfit)}`
+          profitSub = p.user_role === 'INVESTOR' ? '80% Investor Share'
+                    : p.user_role === 'ACCOUNT_HOLDER' ? '20% Acct. Holder Share'
+                    : 'Realized Gain'
+        } else if (uProfit < 0) {
+          profitText = `-₹${formatINR(Math.abs(uProfit))}`
+          profitSub = 'Loss Share'
+        } else {
+          profitText = '₹0'
+          profitSub = r.refund_amount ? 'Refunded' : 'No Gain'
         }
       } else if (ipo.status === 'OPEN') {
         status = 'APPLIED'
@@ -353,15 +219,22 @@ export default function History() {
       const dateObj = new Date(p.created_at)
       const year = !isNaN(dateObj.getTime()) ? dateObj.getFullYear().toString() : '2026'
 
+      const holderDisplay = p.user_role === 'INVESTOR' && p.profiles?.full_name
+        ? `Via ${p.profiles.full_name}`
+        : p.user_role === 'ACCOUNT_HOLDER' && p.investor?.full_name
+        ? `For ${p.investor.full_name}`
+        : userName
+
       return {
         id: p.id,
         name: ipoName,
         code: ipo.ipo_code || '',
         dematInfo: 'IN301549 • CDSL',
-        holder: userName,
+        holder: holderDisplay,
         lots,
         amount: lotAmount,
         amountType,
+        userProfit: uProfit,
         status,
         statusLabel,
         profitText,
@@ -714,20 +587,40 @@ export default function History() {
           <table className="w-full text-left border-collapse text-xs">
             <thead>
               <tr className="bg-slate-50/80 border-b border-slate-200 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                <th className="py-3.5 px-4 font-semibold" scope="col">IPO / Scrip</th>
-                <th className="py-3.5 px-4 font-semibold" scope="col">Demat / PAN</th>
-                <th className="py-3.5 px-4 font-semibold" scope="col">Lots &amp; Capital</th>
+                <th className="py-3.5 px-4 font-semibold" scope="col">IPO</th>
+                <th className="py-3.5 px-4 font-semibold" scope="col">Lots</th>
                 <th className="py-3.5 px-4 font-semibold" scope="col">Allotment Status</th>
-                <th className="py-3.5 px-4 font-semibold text-right" scope="col">Profit / Est. Gain</th>
+                <th className="py-3.5 px-4 font-semibold text-right" scope="col">Profit</th>
                 <th className="py-3.5 px-4 font-semibold" scope="col">Settlement &amp; ASBA</th>
                 <th className="py-3.5 px-4 font-semibold" scope="col">Bid Date</th>
                 <th className="py-3.5 px-4 font-semibold text-center" scope="col">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {displayedItems.length === 0 ? (
+              {participations.length === 0 ? (
                 <tr>
-                  <td colSpan="8" className="py-12 text-center text-slate-400">
+                  <td colSpan="7" className="py-16 text-center text-slate-400">
+                    <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto mb-3 text-slate-400">
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                    </div>
+                    <p className="text-sm font-bold text-slate-700">No IPO records found</p>
+                    <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
+                      You haven&apos;t participated in any IPOs yet. Once you apply for an IPO, your bidding history and results will appear here.
+                    </p>
+                    <Link
+                      to="/user/ipos"
+                      className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-sm transition-all"
+                    >
+                      <span>Explore Available IPOs</span>
+                      <span>→</span>
+                    </Link>
+                  </td>
+                </tr>
+              ) : displayedItems.length === 0 ? (
+                <tr>
+                  <td colSpan="7" className="py-12 text-center text-slate-400">
                     <p className="text-sm font-semibold text-slate-500">No participations match your filter criteria</p>
                     <button
                       onClick={() => { setSearchQuery(''); setSelectedYear('ALL'); setSelectedStatus('ALL'); setSelectedCategory('ALL'); setQuickFilter('ALL') }}
@@ -742,7 +635,7 @@ export default function History() {
                   const targetDetailUrl = item.isDemo ? '#' : `/user/ipos/${item.id}`
                   return (
                     <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
-                      {/* IPO / Scrip */}
+                      {/* IPO */}
                       <td className="py-4 px-4">
                         <Link
                           to={targetDetailUrl}
@@ -750,21 +643,16 @@ export default function History() {
                         >
                           {item.name}
                         </Link>
+                        {item.code && item.code !== item.name && (
+                          <span className="text-[10px] font-mono text-slate-400">{item.code}</span>
+                        )}
                       </td>
 
-                      {/* Demat / PAN */}
-                      <td className="py-4 px-4">
-                        <div className="text-[11px] font-mono text-slate-500">{item.dematInfo}</div>
-                      </td>
-
-                      {/* Lots & Capital */}
+                      {/* Lots */}
                       <td className="py-4 px-4 whitespace-nowrap">
-                        <div className="font-medium text-slate-900">
+                        <span className="font-medium text-slate-900">
                           {item.lots} Lot{item.lots > 1 ? 's' : ''}
-                        </div>
-                        <div className="text-slate-500 text-[11px] font-mono mt-0.5">
-                          ₹{formatINR(item.amount)} {item.amountType}
-                        </div>
+                        </span>
                       </td>
 
                       {/* Allotment Status */}
@@ -795,30 +683,22 @@ export default function History() {
                         )}
                       </td>
 
-                      {/* Profit / Est. Gain */}
+                      {/* Profit */}
                       <td className="py-4 px-4 text-right whitespace-nowrap">
-                        {item.status === 'SELECTED' && (
+                        {item.userProfit > 0 ? (
                           <>
                             <div className="font-bold text-emerald-600 font-mono text-xs">{item.profitText}</div>
-                            <div className="text-[10px] font-semibold text-emerald-700 mt-0.5">{item.profitSub}</div>
+                            <div className="text-[10px] font-semibold text-emerald-700/80 mt-0.5">{item.profitSub}</div>
                           </>
-                        )}
-                        {item.status === 'PENDING' && (
+                        ) : item.userProfit < 0 ? (
                           <>
-                            <div className="font-bold text-amber-600 font-mono text-xs">{item.profitText}</div>
-                            <div className="text-[10px] text-slate-400 mt-0.5">{item.profitSub}</div>
+                            <div className="font-bold text-rose-600 font-mono text-xs">{item.profitText}</div>
+                            <div className="text-[10px] font-semibold text-rose-600/80 mt-0.5">{item.profitSub}</div>
                           </>
-                        )}
-                        {item.status === 'REJECTED' && (
+                        ) : (
                           <>
-                            <div className="font-medium text-slate-400 font-mono text-xs">{item.profitText}</div>
-                            <div className="text-[10px] text-slate-400 mt-0.5">{item.profitSub}</div>
-                          </>
-                        )}
-                        {item.status === 'APPLIED' && (
-                          <>
-                            <div className="font-bold text-emerald-600 font-mono text-xs">{item.profitText}</div>
-                            <div className="text-[10px] font-semibold text-emerald-700 mt-0.5">{item.profitSub}</div>
+                            <div className="font-medium text-slate-500 font-mono text-xs">{item.profitText}</div>
+                            {item.profitSub && <div className="text-[10px] text-slate-400 mt-0.5">{item.profitSub}</div>}
                           </>
                         )}
                       </td>

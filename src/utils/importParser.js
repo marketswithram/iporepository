@@ -3,9 +3,10 @@ import { parseNumericFromImport, parseBooleanFromImport } from './formatters'
 // =============================================================================
 // Header normalization map
 // Maps every recognized column name variation → canonical field name
-// YOUR FORMAT: S.NO | NAME/INVESTOR NAME | AMOUNT CONTRIBUTED | APPLIED FROM |
-//              LOTS | APPLIED AMOUNT | ALLOTED? | REFUND | PROFIT SHARE |
-//              TAX RESERVE | FINAL SETTLEMENT
+// EXPECTED FORMAT (11 columns):
+// S.NO | INVESTOR NAME | AMOUNT CONTRIBUTED | APPLIED FROM |
+// LOTS | APPLIED AMOUNT | ALLOTED? | REFUND | PROFIT SHARE |
+// TAX RESERVE | FINAL SETTLEMENT
 // =============================================================================
 const HEADER_MAP = {
   // serial / row number
@@ -13,7 +14,7 @@ const HEADER_MAP = {
   's no': 'serial',      'sr no': 'serial',        'sr. no.': 'serial',
   'no.': 'serial',       'no': 'serial',           'sno': 'serial',
 
-  // participant name
+  // participant / investor name (col 2)
   'name': 'name',
   'investor name': 'name',
   'participant name': 'name',
@@ -22,7 +23,7 @@ const HEADER_MAP = {
   'account holder name': 'name',
   'member name': 'name',
 
-  // amount contributed / investment
+  // amount contributed / investment (col 3)
   'amount': 'amount',
   'amount contributed': 'amount',
   'ipo amount': 'amount',
@@ -30,15 +31,16 @@ const HEADER_MAP = {
   'investment': 'amount',
   'contribution': 'amount',
 
-  // applied from / dp id / source
+  // applied from / account holder / source (col 4)
   'applied from': 'applied_from',
   'applied_from': 'applied_from',
   'source': 'applied_from',
   'dp id': 'applied_from',
   'dp': 'applied_from',
   'from': 'applied_from',
+  'account holder': 'applied_from',
 
-  // lots
+  // lots (col 5)
   'lots': 'lots',
   'no of lots': 'lots',
   'lot count': 'lots',
@@ -46,7 +48,7 @@ const HEADER_MAP = {
   'number of lots': 'lots',
   'shares': 'lots',
 
-  // applied amount (numeric) — we derive applied=Yes when this > 0
+  // applied amount (numeric col 6) — derive applied=Yes when this > 0
   'applied amount': 'applied_amount',
   'applied_amount': 'applied_amount',
   'amt applied': 'applied_amount',
@@ -62,7 +64,7 @@ const HEADER_MAP = {
   'allotted': 'allotted',
   'allotted?': 'allotted',
   'alloted': 'allotted',
-  'alloted?': 'allotted',      // extra alias for the ? variant
+  'alloted?': 'allotted',
   'allotment': 'allotted',
   'allotment status': 'allotted',
   'is allotted': 'allotted',
@@ -101,7 +103,6 @@ const HEADER_MAP = {
 }
 
 function normalizeHeader(raw) {
-  // Strip special chars like ?, *, # but keep spaces and letters
   const cleaned = String(raw)
     .toLowerCase()
     .replace(/[_*#]/g, ' ')
@@ -138,7 +139,7 @@ function splitLine(line, delimiter) {
 }
 
 /**
- * Main parser — supports your exact CSV format:
+ * Main parser — supports 11-column format:
  * S.NO | INVESTOR NAME | AMOUNT CONTRIBUTED | APPLIED FROM | LOTS |
  * APPLIED AMOUNT | ALLOTED? | REFUND | PROFIT SHARE | TAX RESERVE | FINAL SETTLEMENT
  */
@@ -162,12 +163,12 @@ export function parseImportText(rawText) {
     return c
   })
 
-  // Check for required columns — 'applied' is now OPTIONAL if 'applied_amount' present
+  // Check for required columns — 'applied' is OPTIONAL if 'applied_amount' present
   const hasApplied       = canonicalHdrs.includes('applied')
   const hasAppliedAmount = canonicalHdrs.includes('applied_amount')
   const REQUIRED = ['name', 'allotted', 'refund', 'profit', 'tax', 'settlement']
   if (!hasApplied && !hasAppliedAmount) {
-    REQUIRED.push('applied') // only require explicit applied if no applied_amount either
+    REQUIRED.push('applied')
   }
   REQUIRED.forEach(req => {
     if (!canonicalHdrs.includes(req)) headerErrors.push(`Required column missing: "${req}"`)
@@ -186,20 +187,20 @@ export function parseImportText(rawText) {
     // ── Serial
     parsed.serial = raw.serial ? parseInt(raw.serial, 10) : i
 
-    // ── Name
+    // ── Investor Name (the actual investor)
     parsed.name = (raw.name ?? '').trim()
-    if (!parsed.name) errors.push('Name is required')
+    if (!parsed.name) errors.push('Investor Name is required')
 
-    // ── Applied From
+    // ── Applied From (the account holder)
     parsed.applied_from = (raw.applied_from ?? '').trim() || null
 
-    // ── Amount
+    // ── Amount Contributed
     if (raw.amount !== undefined) {
       parsed.amount = parseNumericFromImport(raw.amount)
       if (parsed.amount === null) errors.push('Invalid amount value')
     }
 
-    // ── Applied Amount (numeric column in your format)
+    // ── Applied Amount (numeric column)
     let appliedAmount = null
     if (raw.applied_amount !== undefined) {
       appliedAmount = parseNumericFromImport(raw.applied_amount)
@@ -211,21 +212,17 @@ export function parseImportText(rawText) {
 
     // ── Applied (boolean)
     if (raw.applied !== undefined) {
-      // Explicit Yes/No column present
       parsed.applied = parseBooleanFromImport(raw.applied)
       if (parsed.applied === null) errors.push('Invalid "applied" value (expected Yes/No)')
     } else if (appliedAmount !== null) {
-      // Derive: applied = true if applied_amount > 0
       parsed.applied = appliedAmount > 0
     } else if (parsed.lots > 0) {
-      // Fallback: if lots > 0, they must have applied
       parsed.applied = true
     } else {
-      // Default: assume applied = true (they are in the list)
       parsed.applied = true
     }
 
-    // ── Allotted (boolean) — handles "ALLOTED?" with ? stripped by normalizer
+    // ── Allotted (boolean)
     parsed.allotted = parseBooleanFromImport(raw.allotted)
     if (parsed.allotted === null) errors.push('Invalid "allotted" value (expected Yes/No)')
 
@@ -240,9 +237,6 @@ export function parseImportText(rawText) {
     if (parsed.tax        === null) errors.push('Invalid tax amount')
     if (parsed.settlement === null) errors.push('Invalid settlement amount')
 
-    // Note: LOTS here = lots applied for, not lots received.
-    // So Allotted=No + Lots=1 is valid (applied for 1 lot, not allotted).
-    // Only flag if Allotted=Yes but Lots=0 (inconsistent — allotted but no lots recorded).
     if (parsed.allotted === true && parsed.lots === 0) errors.push('Allotted is Yes but Lots is 0')
 
     rows.push({
@@ -260,46 +254,148 @@ export function parseImportText(rawText) {
 }
 
 /**
- * Match parsed rows to known participants.
- * Hierarchy: Application Number → Username → Full Name
+ * Match parsed rows to known participation records.
+ *
+ * NEW MATCHING STRATEGY for the 11-column format:
+ * Each row has "Investor Name" (col 2) and "Applied From" (col 4).
+ * A participation record has:
+ *   - profiles (account holder = user_id)
+ *   - investor (investor_user_id)
+ *
+ * Match hierarchy:
+ * 1. (investor full_name matches parsed.name) AND (account holder full_name matches parsed.applied_from)
+ * 2. (investor full_name matches parsed.name) AND applied_from is missing/same
+ * 3. Fallback: By username or full_name alone (legacy support)
  */
 export function matchRowsToParticipants(rows, participants) {
-  const byAppNum   = new Map()
-  const byUsername = new Map()
-  const byName     = new Map()
+  // Build lookup indexes
+  const byInvestorAndHolder = new Map()  // key: `${investorName}|${holderName}` → participation
+  const byInvestorName      = new Map()  // key: investorName → [participations]
+  const byUsername          = new Map()  // key: username → [participations]
+  const byFullName          = new Map()  // key: full_name → [participations]
 
   for (const p of participants) {
-    if (p.application_number) byAppNum.set(p.application_number.toLowerCase(), p)
-    const un = (p.profiles?.username ?? '').toLowerCase()
-    if (un) { if (!byUsername.has(un)) byUsername.set(un, []); byUsername.get(un).push(p) }
-    const fn = (p.profiles?.full_name ?? '').toLowerCase()
-    if (fn) { if (!byName.has(fn)) byName.set(fn, []); byName.get(fn).push(p) }
+    const holderName   = (p.profiles?.full_name ?? '').toLowerCase().trim()
+    const holderUser   = (p.profiles?.username  ?? '').toLowerCase().trim()
+    // investor profile is in p.investor (joined separately)
+    const investorName = (p.investor?.full_name ?? p.profiles?.full_name ?? '').toLowerCase().trim()
+    const investorUser = (p.investor?.username  ?? p.profiles?.username  ?? '').toLowerCase().trim()
+
+    // Index 1: investor + account holder combo
+    const comboKey = `${investorName}|${holderName}`
+    byInvestorAndHolder.set(comboKey, p)
+
+    // Index 2: investor name → list (may have multiple rows if same investor, diff accounts)
+    if (investorName) {
+      if (!byInvestorName.has(investorName)) byInvestorName.set(investorName, [])
+      byInvestorName.get(investorName).push(p)
+    }
+
+    // Index 3: username (account holder's username)
+    if (holderUser) {
+      if (!byUsername.has(holderUser)) byUsername.set(holderUser, [])
+      byUsername.get(holderUser).push(p)
+    }
+
+    // Index 4: full name (account holder's)
+    if (holderName) {
+      if (!byFullName.has(holderName)) byFullName.set(holderName, [])
+      byFullName.get(holderName).push(p)
+    }
+
+    // Also index investor username
+    if (investorUser && investorUser !== holderUser) {
+      if (!byUsername.has(investorUser)) byUsername.set(investorUser, [])
+      byUsername.get(investorUser).push(p)
+    }
   }
 
   return rows.map(row => {
-    const name = (row.parsed.name ?? '').toLowerCase()
+    const investorNameRaw = (row.parsed.name ?? '').toLowerCase().trim()
+    const appliedFromRaw  = (row.parsed.applied_from ?? '').toLowerCase().trim()
 
-    // 1. By application_number
-    const appMatch = row.raw.application_number
-      ? byAppNum.get(row.raw.application_number.toLowerCase())
-      : null
-    if (appMatch) return { ...row, matchStatus: 'MATCHED', participationId: appMatch.id, matchedProfile: appMatch.profiles }
+    // ── Strategy 1: Exact combo match (investor + account holder)
+    if (investorNameRaw && appliedFromRaw) {
+      const comboKey = `${investorNameRaw}|${appliedFromRaw}`
+      const match = byInvestorAndHolder.get(comboKey)
+      if (match) {
+        return {
+          ...row,
+          matchStatus: 'MATCHED',
+          participationId: match.id,
+          matchedProfile: match.profiles,
+        }
+      }
+    }
 
-    // 2. By username (exact, case-insensitive)
-    const userMatches = byUsername.get(name) ?? []
-    if (userMatches.length === 1) return { ...row, matchStatus: 'MATCHED', participationId: userMatches[0].id, matchedProfile: userMatches[0].profiles }
-    if (userMatches.length > 1)  return { ...row, matchStatus: 'AMBIGUOUS', isValid: false, errors: [...row.errors, 'Multiple participants match username: ' + name] }
+    // ── Strategy 2: Investor name matches, applied_from matches investor (same person)
+    if (investorNameRaw && (!appliedFromRaw || appliedFromRaw === investorNameRaw)) {
+      const comboKey = `${investorNameRaw}|${investorNameRaw}`
+      const match = byInvestorAndHolder.get(comboKey)
+      if (match) {
+        return {
+          ...row,
+          matchStatus: 'MATCHED',
+          participationId: match.id,
+          matchedProfile: match.profiles,
+        }
+      }
+    }
 
-    // 3. By full_name (case-insensitive)
-    const nameMatches = byName.get(name) ?? []
-    if (nameMatches.length === 1) return { ...row, matchStatus: 'MATCHED', participationId: nameMatches[0].id, matchedProfile: nameMatches[0].profiles }
-    if (nameMatches.length > 1)  return { ...row, matchStatus: 'AMBIGUOUS', isValid: false, errors: [...row.errors, 'Multiple participants share the same name: ' + row.parsed.name] }
+    // ── Strategy 3: Try matching applied_from only (account holder's full name)
+    if (appliedFromRaw) {
+      const holderMatches = byFullName.get(appliedFromRaw) ?? []
+      if (holderMatches.length === 1) {
+        return {
+          ...row,
+          matchStatus: 'MATCHED',
+          participationId: holderMatches[0].id,
+          matchedProfile: holderMatches[0].profiles,
+        }
+      }
+      if (holderMatches.length > 1) {
+        return {
+          ...row,
+          matchStatus: 'AMBIGUOUS',
+          isValid: false,
+          errors: [...row.errors, `Multiple participants found for Applied From: "${row.parsed.applied_from}"`],
+        }
+      }
+    }
+
+    // ── Strategy 4: Fall back to matching by investor name (full_name or username)
+    const investorMatches = byInvestorName.get(investorNameRaw) ?? []
+    if (investorMatches.length === 1) {
+      return {
+        ...row,
+        matchStatus: 'MATCHED',
+        participationId: investorMatches[0].id,
+        matchedProfile: investorMatches[0].profiles,
+      }
+    }
+    if (investorMatches.length > 1) {
+      return {
+        ...row,
+        matchStatus: 'AMBIGUOUS',
+        isValid: false,
+        errors: [...row.errors, `Multiple records match investor "${row.parsed.name}" — add Applied From column to disambiguate`],
+      }
+    }
+
+    // ── Strategy 5: Try username match
+    const userMatches = byUsername.get(investorNameRaw) ?? []
+    if (userMatches.length === 1) {
+      return { ...row, matchStatus: 'MATCHED', participationId: userMatches[0].id, matchedProfile: userMatches[0].profiles }
+    }
+    if (userMatches.length > 1) {
+      return { ...row, matchStatus: 'AMBIGUOUS', isValid: false, errors: [...row.errors, 'Multiple participants match: ' + investorNameRaw] }
+    }
 
     return {
       ...row,
       matchStatus: 'UNMATCHED',
       isValid: false,
-      errors: [...row.errors, 'No participant found matching: ' + row.parsed.name],
+      errors: [...row.errors, `No participant found matching investor "${row.parsed.name}" / applied from "${row.parsed.applied_from ?? '—'}"`],
     }
   })
 }

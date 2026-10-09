@@ -1,91 +1,9 @@
 import { useEffect, useState, useMemo } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
-import { getUserParticipatedIpos, getOpenIpos } from '../../services/ipoService'
+import { getUserParticipatedIpos, getOpenIpos, getUserProfitLossSummary } from '../../services/ipoService'
 
-// Fallback reference data matching design when user has no participations yet
-const DEMO_PARTICIPATIONS = [
-  {
-    id: 'demo-1',
-    initials: 'TAT',
-    colorIndex: 0,
-    name: 'Tata Technologies Ltd',
-    code: 'TATATECH',
-    holder: 'Satish Kumar',
-    lots: 1,
-    amount: 15000,
-    status: 'SELECTED',
-    statusLabel: 'Selected',
-    profitText: '+₹15,240',
-    profitSub: '+101.6% listing',
-    date: '18 Oct 2024',
-    isDemo: true,
-  },
-  {
-    id: 'demo-2',
-    initials: 'WAA',
-    colorIndex: 1,
-    name: 'Waaree Energies Ltd',
-    code: 'WAAREE',
-    holder: 'Satish Kumar',
-    lots: 1,
-    amount: 13527,
-    status: 'PENDING',
-    statusLabel: 'Pending',
-    profitText: 'GMP: +₹1,475',
-    profitSub: 'Est. +98.1%',
-    date: '24 Oct 2024',
-    isDemo: true,
-  },
-  {
-    id: 'demo-3',
-    initials: 'HYU',
-    colorIndex: 2,
-    name: 'Hyundai Motor India',
-    code: 'HYUNDAI',
-    holder: 'Satish Kumar',
-    lots: 1,
-    amount: 13720,
-    status: 'REJECTED',
-    statusLabel: 'Rejected',
-    profitText: 'Refunded',
-    profitSub: '₹13,720 unblocked',
-    date: '17 Oct 2024',
-    isDemo: true,
-  },
-  {
-    id: 'demo-4',
-    initials: 'NTP',
-    colorIndex: 3,
-    name: 'NTPC Green Energy',
-    code: 'NTPCGREEN',
-    holder: 'Satish Kumar',
-    lots: 2,
-    amount: 29808,
-    status: 'APPLIED',
-    statusLabel: 'Applied',
-    profitText: '+₹2,210',
-    profitSub: '+7.4% Expected',
-    date: '21 Nov 2024',
-    isDemo: true,
-  },
-  {
-    id: 'demo-5',
-    initials: 'SWI',
-    colorIndex: 4,
-    name: 'Swiggy Limited',
-    code: 'SWIGGY',
-    holder: 'Satish Kumar',
-    lots: 1,
-    amount: 14820,
-    status: 'SELECTED',
-    statusLabel: 'Selected',
-    profitText: '+₹2,546',
-    profitSub: '+17.1% listing',
-    date: '08 Nov 2024',
-    isDemo: true,
-  },
-]
+
 
 const SCRIP_BADGE_STYLES = [
   'bg-indigo-50 border-indigo-100 text-indigo-700',
@@ -112,6 +30,7 @@ export default function UserDashboard() {
   const navigate = useNavigate()
   const [participations, setParticipations] = useState([])
   const [openIpos, setOpenIpos] = useState([])
+  const [dbSummary, setDbSummary] = useState(null)
   const [loading, setLoading] = useState(true)
   const [currentPage, setCurrentPage] = useState(1)
   const pageSize = 5
@@ -124,11 +43,14 @@ export default function UserDashboard() {
     const fetchData = async () => {
       try {
         setLoading(true)
-        const [partRes, openRes] = await Promise.allSettled([
+        const [partRes, openRes, sumRes] = await Promise.allSettled([
           profile?.id
             ? getUserParticipatedIpos({ page: 1, pageSize: 100, userId: profile.id })
             : Promise.resolve({ data: [] }),
           getOpenIpos(),
+          profile?.id
+            ? getUserProfitLossSummary(profile.id)
+            : Promise.resolve(null),
         ])
 
         if (isMounted) {
@@ -137,6 +59,9 @@ export default function UserDashboard() {
           }
           if (openRes.status === 'fulfilled' && openRes.value) {
             setOpenIpos(openRes.value)
+          }
+          if (sumRes.status === 'fulfilled' && sumRes.value) {
+            setDbSummary(sumRes.value)
           }
         }
       } catch (err) {
@@ -154,17 +79,17 @@ export default function UserDashboard() {
 
   // Calculate summary metrics
   const summary = useMemo(() => {
-    if (!hasRealData) {
+    if (!hasRealData && !dbSummary) {
       return {
-        totalApplications: 18,
-        companiesCount: 14,
-        allotted: 7,
-        missed: 11,
-        winRate: '38.8',
-        realizedProfit: 25500,
-        blockedCapital: 58500,
-        activeBidsCount: 3,
-        totalCapital: 142800,
+        totalApplications: 0,
+        companiesCount: 0,
+        allotted: 0,
+        missed: 0,
+        winRate: '0.0',
+        realizedProfit: 0,
+        blockedCapital: 0,
+        activeBidsCount: 0,
+        totalCapital: 0,
       }
     }
 
@@ -191,12 +116,21 @@ export default function UserDashboard() {
         } else if (r.applied || r.refund_amount) {
           missed++
         }
-        totalProfit += Number(r.profit_amount ?? 0)
+        // Use user's actual profit share (80% / 20% / 100%)
+        const uProfit = p.user_profit !== undefined
+          ? Number(p.user_profit)
+          : Number(r.profit_amount ?? 0)
+        totalProfit += uProfit
       } else {
         blockedCap += bidAmt
         activeBids++
       }
     }
+
+    // Prefer the database table net_profit if available from user_ipo_profits
+    const finalRealizedProfit = dbSummary?.net_profit !== undefined
+      ? Number(dbSummary.net_profit)
+      : totalProfit
 
     const totalApps = participations.length
     const winRate = totalApps > 0 ? ((allotted / totalApps) * 100).toFixed(1) : '0.0'
@@ -207,17 +141,17 @@ export default function UserDashboard() {
       allotted,
       missed,
       winRate,
-      realizedProfit: totalProfit,
+      realizedProfit: finalRealizedProfit,
       blockedCapital: blockedCap > 0 ? blockedCap : (activeBids > 0 ? activeBids * 14880 : 0),
       activeBidsCount: activeBids,
       totalCapital: totalCap,
     }
-  }, [hasRealData, participations])
+  }, [hasRealData, participations, dbSummary])
 
   // Normalise table items
   const tableItems = useMemo(() => {
     if (!hasRealData) {
-      return DEMO_PARTICIPATIONS
+      return []
     }
 
     return participations.map((p, idx) => {
@@ -236,17 +170,24 @@ export default function UserDashboard() {
       if (r) {
         if (r.allotted) {
           status = 'SELECTED'
-          const pAmount = Number(r.profit_amount ?? 0)
-          profitText = pAmount > 0 ? `+₹${formatINR(pAmount)}` : `₹${formatINR(pAmount)}`
-          profitSub = pAmount > 0 ? '+ Listing Gain' : 'Settled'
         } else if (r.refund_amount || r.applied === false) {
           status = 'REJECTED'
-          profitText = 'Refunded'
-          profitSub = r.refund_amount ? `₹${formatINR(r.refund_amount)} unblocked` : 'Mandate revoked'
         } else {
           status = 'PENDING'
-          profitText = 'Awaiting Result'
-          profitSub = 'Mandate Active'
+        }
+
+        const pAmount = p.user_profit !== undefined ? Number(p.user_profit) : Number(r.profit_amount ?? 0)
+        if (pAmount > 0) {
+          profitText = `+₹${formatINR(pAmount)}`
+          profitSub = p.user_role === 'INVESTOR' ? '80% Investor Share'
+                    : p.user_role === 'ACCOUNT_HOLDER' ? '20% Acct. Holder Share'
+                    : '+ Listing Gain'
+        } else if (pAmount < 0) {
+          profitText = `-₹${formatINR(Math.abs(pAmount))}`
+          profitSub = 'Loss Share'
+        } else {
+          profitText = r.refund_amount ? 'Refunded' : '₹0'
+          profitSub = r.refund_amount ? `₹${formatINR(r.refund_amount)} unblocked` : 'Mandate revoked'
         }
       } else if (ipo.status === 'OPEN') {
         status = 'APPLIED'
@@ -254,12 +195,19 @@ export default function UserDashboard() {
         profitSub = 'ASBA Verified'
       }
 
+      const holderDisplay = p.user_role === 'INVESTOR' && p.profiles?.full_name
+        ? `Via ${p.profiles.full_name}`
+        : p.user_role === 'ACCOUNT_HOLDER' && p.investor?.full_name
+        ? `For ${p.investor.full_name}`
+        : userName
+
       return {
         id: p.id,
         initials,
         colorIndex: idx % SCRIP_BADGE_STYLES.length,
         name: ipoName,
-        holder: userName,
+        code: ipo.ipo_code || '',
+        holder: holderDisplay,
         lots,
         amount: lotAmount,
         status,
@@ -276,7 +224,7 @@ export default function UserDashboard() {
 
   // Year Range derived from IPO history (participations)
   const yearRange = useMemo(() => {
-    const items = hasRealData ? participations : DEMO_PARTICIPATIONS
+    const items = hasRealData ? participations : []
     if (!items || items.length === 0) {
       return new Date().getFullYear().toString()
     }
@@ -347,8 +295,8 @@ export default function UserDashboard() {
       </section>
       {/* END: Hero Welcome & Quick Action */}
 
-      {/* BEGIN: 4 Premier Metric Summary Cards */}
-      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5" data-purpose="metric-overview-grid">
+      {/* BEGIN: 3 Premier Metric Summary Cards */}
+      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5" data-purpose="metric-overview-grid">
         {/* Card 1: Total Applications */}
         <article className="fintech-card rounded-2xl p-5 flex flex-col justify-between relative overflow-hidden group">
           <div className="absolute -right-6 -top-6 w-24 h-24 rounded-full bg-slate-100/60 pointer-events-none transition-transform group-hover:scale-110"></div>
@@ -430,38 +378,11 @@ export default function UserDashboard() {
             </div>
           </div>
         </article>
-
-        {/* Card 4: Net Blocked Capital */}
-        <article className="fintech-card rounded-2xl p-5 flex flex-col justify-between relative overflow-hidden group">
-          <div className="absolute -right-6 -top-6 w-24 h-24 rounded-full bg-indigo-50/60 pointer-events-none transition-transform group-hover:scale-110"></div>
-          <div className="flex items-start justify-between relative z-10">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Blocked Capital</span>
-            <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
-              Active Mandates
-            </span>
-          </div>
-          <div className="mt-4 flex items-baseline justify-between relative z-10">
-            <div>
-              <p className="text-3xl font-extrabold text-midnight-950 font-mono tracking-tight">
-                ₹{formatINR(summary.blockedCapital)}
-              </p>
-              <p className="text-xs font-medium text-slate-500 mt-1">
-                {summary.activeBidsCount || 3} Active ASBA bids
-              </p>
-            </div>
-            {/* Sparkline */}
-            <div className="w-16 h-8 text-indigo-500 shrink-0">
-              <svg className="w-full h-full" fill="none" viewBox="0 0 64 32">
-                <path d="M2 28 C 16 26, 28 20, 42 16 C 52 12, 58 6, 62 4" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5"></path>
-              </svg>
-            </div>
-          </div>
-        </article>
       </section>
       {/* END: Metric Summary Cards */}
 
       {/* BEGIN: Quick Action & Shortcut Row */}
-      <section className="grid grid-cols-1 md:grid-cols-3 gap-5" data-purpose="quick-access-shortcuts">
+      <section className="grid grid-cols-1 md:grid-cols-2 gap-5" data-purpose="quick-access-shortcuts">
         {/* Card 1: Available IPOs */}
         <div
           onClick={() => navigate('/user/ipos')}
@@ -507,8 +428,6 @@ export default function UserDashboard() {
               )}
             </div>
           </div>
-
-
         </div>
 
         {/* Card 2: IPO History & Bids */}
@@ -550,44 +469,6 @@ export default function UserDashboard() {
               </div>
             </div>
           </div>
-
-
-        </div>
-
-        {/* Card 3: P&L Analytics */}
-        <div
-          onClick={() => navigate('/user/profit-loss')}
-          className="cursor-pointer bg-gradient-to-br from-white via-amber-50/30 to-white border border-slate-200/80 hover:border-amber-300 shadow-[0_4px_20px_-4px_rgba(245,158,11,0.08)] hover:shadow-[0_8px_30px_-6px_rgba(245,158,11,0.16)] transition-all duration-300 rounded-2xl p-5 group flex flex-col justify-between relative overflow-hidden"
-        >
-          <div className="space-y-3.5 relative z-10">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-200/60 text-amber-600 flex items-center justify-center shadow-sm">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
-                    <line x1="18" x2="18" y1="20" y2="10"></line>
-                    <line x1="12" x2="12" y1="20" y2="4"></line>
-                    <line x1="6" x2="6" y1="20" y2="14"></line>
-                  </svg>
-                </div>
-                <h3 className="text-sm font-bold text-midnight-950 group-hover:text-amber-600 transition-colors">
-                  P&amp;L Analytics
-                </h3>
-              </div>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                {yearRange}
-              </span>
-            </div>
-
-            {/* Replaced with total profit number */}
-            <div className="space-y-1 pt-1 min-h-[50px] flex flex-col justify-center">
-              <p className="text-xs text-slate-500 font-medium">Realized Profit</p>
-              <p className="text-2xl font-extrabold text-emerald-600 font-mono tracking-tight">
-                {summary.realizedProfit >= 0 ? `+₹${formatINR(summary.realizedProfit)}` : `-₹${formatINR(Math.abs(summary.realizedProfit))}`}
-              </p>
-            </div>
-          </div>
-
-
         </div>
       </section>
       {/* END: Quick Action Cards */}
@@ -599,11 +480,6 @@ export default function UserDashboard() {
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-base font-bold text-midnight-950 tracking-tight">Recent IPO Participations</h2>
-              {!hasRealData && (
-                <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
-                  Demo Preview
-                </span>
-              )}
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
               Detailed log of bids, allotment states, and recorded gains across demat accounts
@@ -626,8 +502,7 @@ export default function UserDashboard() {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="border-b border-slate-200/70 bg-slate-50/70 text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                <th className="py-3 px-6" scope="col">IPO Scrip</th>
-                <th className="py-3 px-6" scope="col">Demat Holder</th>
+                <th className="py-3 px-6" scope="col">IPO</th>
                 <th className="py-3 px-6" scope="col">Lots Applied</th>
                 <th className="py-3 px-6" scope="col">Amount</th>
                 <th className="py-3 px-6" scope="col">Status</th>
@@ -639,10 +514,22 @@ export default function UserDashboard() {
             <tbody className="divide-y divide-slate-100 text-sm">
               {displayedItems.length === 0 ? (
                 <tr>
-                  <td colSpan="8" className="py-12 text-center text-slate-400">
-                    <p className="text-sm font-semibold text-slate-500">No participations found</p>
-                    <Link to="/user/ipos" className="text-indigo-600 text-xs font-semibold hover:underline mt-1 inline-block">
-                      Apply for an open IPO
+                  <td colSpan="7" className="py-16 text-center text-slate-400">
+                    <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto mb-3 text-slate-400">
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                    </div>
+                    <p className="text-sm font-bold text-slate-700">No IPO records found</p>
+                    <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
+                      You haven&apos;t participated in any IPOs yet. Once you apply, your bids will appear here.
+                    </p>
+                    <Link
+                      to="/user/ipos"
+                      className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-sm transition-all"
+                    >
+                      <span>Explore Open IPOs</span>
+                      <span>→</span>
                     </Link>
                   </td>
                 </tr>
@@ -652,24 +539,24 @@ export default function UserDashboard() {
                   const targetDetailUrl = item.isDemo ? '/user/history' : `/user/ipos/${item.id}`
                   return (
                     <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
-                      {/* IPO Scrip: only scrip initials and IPO name (no equity text) */}
+                      {/* IPO: initials badge, original name, and code */}
                       <td className="py-4 px-6 font-medium text-slate-900">
                         <div className="flex items-center gap-3">
                           <div className={`w-9 h-9 rounded-xl border flex items-center justify-center font-bold text-xs shrink-0 ${badgeStyle}`}>
                             {item.initials}
                           </div>
-                          <Link
-                            to={targetDetailUrl}
-                            className="font-bold text-midnight-950 leading-tight hover:text-indigo-600 transition-colors"
-                          >
-                            {item.name}
-                          </Link>
+                          <div>
+                            <Link
+                              to={targetDetailUrl}
+                              className="font-bold text-midnight-950 leading-tight hover:text-indigo-600 transition-colors block"
+                            >
+                              {item.name}
+                            </Link>
+                            {item.code && item.code !== item.name && (
+                              <span className="text-[11px] font-mono text-slate-400">{item.code}</span>
+                            )}
+                          </div>
                         </div>
-                      </td>
-
-                      {/* Demat Holder: only user/holder name (no HNI Primary) */}
-                      <td className="py-4 px-6">
-                        <span className="text-xs font-semibold text-slate-700">{item.holder}</span>
                       </td>
 
                       {/* Lots Applied: only lots (no 30 sh) */}

@@ -68,18 +68,62 @@ export default function IpoDetails() {
     }
   }
 
+  /**
+   * Generate the 11-column TSV for Excel pasting.
+   * Columns: S.No | Investor Name | Amount Contributed | Applied From |
+   *          Lots | Applied Amount | Allotted | Refund | Profit Share | Tax Reserve | Final Settlement
+   */
   const handleCopyList = async () => {
     setCopying(true)
     try {
       const rows = await getFormattedParticipantList(ipoId)
-      const text = rows.map(r =>
-        `${r.serial}. ${r.full_name} (${r.participation_type === 'INVESTOR' ? `Investor - ${r.application_number ?? 'N/A'}` : 'Account Holder'})`
-      ).join('\n')
-      await navigator.clipboard.writeText(text)
-      setCopyMsg(`✅ Copied ${rows.length} participants to clipboard`)
-      setTimeout(() => setCopyMsg(''), 3000)
-    } catch {
-      setCopyMsg('❌ Failed to copy')
+      if (rows.length === 0) {
+        setCopyMsg('⚠️ No participants found')
+        setTimeout(() => setCopyMsg(''), 3000)
+        return
+      }
+
+      // Header row
+      const HEADERS = [
+        'S.No',
+        'Investor Name',
+        'Amount Contributed',
+        'Applied From',
+        'Lots',
+        'Applied Amount',
+        'Allotted',
+        'Refund',
+        'Profit Share',
+        'Tax Reserve',
+        'Final Settlement',
+      ]
+
+      const lines = [HEADERS.join('\t')]
+
+      rows.forEach(r => {
+        const line = [
+          r.serial,
+          r.investor_name ?? '',
+          r.amount_contributed ?? '',
+          r.applied_from ?? '',
+          r.lots ?? '',
+          r.applied_amount ?? '',
+          r.allotted ?? '',       // blank before results
+          r.refund ?? '',         // blank before results
+          r.profit_share ?? '',   // blank before results
+          r.tax_reserve ?? '',    // blank before results
+          r.final_settlement ?? '', // blank before results
+        ].join('\t')
+        lines.push(line)
+      })
+
+      const tsv = lines.join('\n')
+      await navigator.clipboard.writeText(tsv)
+      setCopyMsg(`✅ Copied ${rows.length} rows (11 columns) — paste directly into Excel`)
+      setTimeout(() => setCopyMsg(''), 5000)
+    } catch (err) {
+      console.error(err)
+      setCopyMsg('❌ Failed to copy. Check console.')
     } finally {
       setCopying(false)
     }
@@ -88,9 +132,9 @@ export default function IpoDetails() {
   if (loading) return <div className="flex justify-center py-20"><div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" /></div>
   if (!ipo)   return <div className="alert-error max-w-lg mt-12">{error || 'IPO not found.'}</div>
 
-  const investors     = participants.filter(p => p.participation_type === 'INVESTOR')
+  const investors      = participants.filter(p => p.participation_type === 'INVESTOR')
   const accountHolders = participants.filter(p => p.participation_type === 'ACCOUNT_HOLDER')
-  const transitions   = STATUS_TRANSITIONS[ipo.status] ?? []
+  const transitions    = STATUS_TRANSITIONS[ipo.status] ?? []
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -167,11 +211,16 @@ export default function IpoDetails() {
               </button>
             ))}
           </div>
-          <div className="flex items-center gap-2">
-            {copyMsg && <span className="text-xs text-gray-600">{copyMsg}</span>}
+          <div className="flex flex-col items-end gap-1">
             <button onClick={handleCopyList} disabled={copying} className="btn btn-secondary btn-sm">
               {copying ? <span className="spinner" /> : '📋'} Copy Participant List
             </button>
+            {copyMsg && (
+              <span className={`text-xs ${copyMsg.startsWith('✅') ? 'text-green-700' : copyMsg.startsWith('⚠') ? 'text-amber-600' : 'text-red-600'}`}>
+                {copyMsg}
+              </span>
+            )}
+            <p className="text-xs text-gray-400">Generates 11-column Excel-ready TSV data</p>
           </div>
         </div>
 
@@ -180,24 +229,57 @@ export default function IpoDetails() {
             <div className="py-10 text-center text-gray-400">
               <p>No {tab === 'investors' ? 'investors' : 'account holders'} yet</p>
             </div>
-          ) : (
+          ) : tab === 'investors' ? (
             <table className="table">
               <thead>
                 <tr>
                   <th>#</th>
                   <th>Username</th>
-                  <th>Full Name</th>
-                  {tab === 'investors' && <th>Application No.</th>}
+                  <th>Full Name (Investor)</th>
+                  <th>Application No.</th>
                   <th>Applied On</th>
                 </tr>
               </thead>
               <tbody>
-                {(tab === 'investors' ? investors : accountHolders).map((p, i) => (
+                {investors.map((p, i) => (
                   <tr key={p.id}>
                     <td className="text-gray-400 text-xs">{i + 1}</td>
                     <td className="font-medium">@{p.profiles?.username}</td>
                     <td>{p.profiles?.full_name}</td>
-                    {tab === 'investors' && <td><code className="text-xs bg-gray-100 px-1.5 py-0.5 rounded">{p.application_number ?? '—'}</code></td>}
+                    <td><code className="text-xs bg-gray-100 px-1.5 py-0.5 rounded">{p.application_number ?? '—'}</code></td>
+                    <td className="text-xs text-gray-400">{formatDateTime(p.created_at)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Account Holder (Applied From)</th>
+                  <th>Actual Investor</th>
+                  <th>Applied On</th>
+                </tr>
+              </thead>
+              <tbody>
+                {accountHolders.map((p, i) => (
+                  <tr key={p.id}>
+                    <td className="text-gray-400 text-xs">{i + 1}</td>
+                    <td>
+                      <p className="font-medium">@{p.profiles?.username}</p>
+                      <p className="text-xs text-gray-500">{p.profiles?.full_name}</p>
+                    </td>
+                    <td>
+                      {p.investor ? (
+                        <>
+                          <p className="font-medium text-indigo-700">@{p.investor?.username}</p>
+                          <p className="text-xs text-gray-500">{p.investor?.full_name}</p>
+                        </>
+                      ) : (
+                        <span className="text-xs text-gray-400">—</span>
+                      )}
+                    </td>
                     <td className="text-xs text-gray-400">{formatDateTime(p.created_at)}</td>
                   </tr>
                 ))}
@@ -205,6 +287,18 @@ export default function IpoDetails() {
             </table>
           )}
         </div>
+      </div>
+
+      {/* 11-Column Format Info */}
+      <div className="bg-indigo-50 border border-indigo-200 rounded-xl px-6 py-4">
+        <p className="text-sm font-semibold text-indigo-900 mb-2">📋 Copy Participant List — Column Format</p>
+        <p className="text-xs text-indigo-700 font-mono">
+          S.No | Investor Name | Amount Contributed | Applied From | Lots | Applied Amount |
+          Allotted | Refund | Profit Share | Tax Reserve | Final Settlement
+        </p>
+        <p className="text-xs text-indigo-600 mt-2">
+          Result columns (Allotted → Final Settlement) are blank. Fill them in Excel, then import via Import Results.
+        </p>
       </div>
     </div>
   )

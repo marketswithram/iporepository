@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
-import { submitParticipation, checkExistingParticipation, getOpenIpos } from '../../services/ipoService'
+import { submitParticipation, checkExistingParticipation, getOpenIpos, getRegisteredUsers } from '../../services/ipoService'
 import { formatCurrency } from '../../utils/formatters'
 
 export default function Apply() {
@@ -16,6 +16,15 @@ export default function Apply() {
   const [appNoErr,   setAppNoErr]   = useState('')
   const [alreadyApplied, setAlreadyApplied] = useState(false)
   const [success, setSuccess] = useState(false)
+
+  // Investor selection (for ACCOUNT_HOLDER type)
+  const [allUsers,        setAllUsers]        = useState([])
+  const [investorSearch,  setInvestorSearch]  = useState('')
+  const [selectedInvestor, setSelectedInvestor] = useState(null)
+  const [investorDropOpen, setInvestorDropOpen] = useState(false)
+  const [investorErr,     setInvestorErr]     = useState('')
+  const [usersLoading,    setUsersLoading]    = useState(false)
+  const dropRef = useRef(null)
 
   useEffect(() => {
     const load = async () => {
@@ -32,6 +41,34 @@ export default function Apply() {
     load()
   }, [ipoId])
 
+  // Load users when Account Holder type is selected
+  useEffect(() => {
+    if (type === 'ACCOUNT_HOLDER' && allUsers.length === 0) {
+      setUsersLoading(true)
+      getRegisteredUsers()
+        .then(users => setAllUsers(users.filter(u => u.id !== profile?.id)))
+        .catch(() => setError('Failed to load users list.'))
+        .finally(() => setUsersLoading(false))
+    }
+  }, [type, allUsers.length, profile?.id])
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handler = (e) => {
+      if (dropRef.current && !dropRef.current.contains(e.target)) {
+        setInvestorDropOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  const filteredUsers = allUsers.filter(u =>
+    investorSearch.trim() === '' ||
+    u.full_name.toLowerCase().includes(investorSearch.toLowerCase()) ||
+    u.username.toLowerCase().includes(investorSearch.toLowerCase())
+  )
+
   const validateAppNo = (v) => {
     if (type === 'ACCOUNT_HOLDER') return ''
     if (!v.trim()) return 'Application number is required for Investor'
@@ -43,11 +80,24 @@ export default function Apply() {
 
   const handleSubmit = async (e) => {
     e.preventDefault(); setError('')
-    const err = validateAppNo(appNo)
-    if (err) { setAppNoErr(err); return }
+    if (type === 'INVESTOR') {
+      const err = validateAppNo(appNo)
+      if (err) { setAppNoErr(err); return }
+    }
+    if (type === 'ACCOUNT_HOLDER' && !selectedInvestor) {
+      setInvestorErr('Please select the actual investor from the list.')
+      return
+    }
     setSubmitting(true)
     try {
-      await submitParticipation({ ipoId, participationType: type, applicationNumber: type === 'INVESTOR' ? appNo.trim() : null, userId: profile.id })
+      await submitParticipation({
+        ipoId,
+        participationType: type,
+        applicationNumber: type === 'INVESTOR' ? appNo.trim() : null,
+        userId: profile.id,
+        investorUserId: type === 'ACCOUNT_HOLDER' ? selectedInvestor.id : null,
+        amountContributed: ipo?.ipo_price ?? null,
+      })
       setSuccess(true)
     } catch (err) {
       if (err?.code === '23505') setError('You have already applied for this IPO.')
@@ -63,8 +113,15 @@ export default function Apply() {
         <div className="text-5xl mb-4">🎉</div>
         <h2 className="text-xl font-bold text-gray-900 mb-2">Application Submitted!</h2>
         <p className="text-gray-500 text-sm mb-2">Participation for <strong>{ipo?.ipo_name}</strong> recorded.</p>
-        <p className="text-gray-500 text-sm mb-6">Type: <strong>{type === 'INVESTOR' ? 'Investor' : 'Account Holder'}</strong>{type === 'INVESTOR' && ` · App No: ${appNo}`}</p>
-        <div className="flex flex-col sm:flex-row gap-3 justify-center">
+        {type === 'INVESTOR' && (
+          <p className="text-gray-500 text-sm mb-2">Type: <strong>Investor</strong> · App No: {appNo}</p>
+        )}
+        {type === 'ACCOUNT_HOLDER' && (
+          <p className="text-gray-500 text-sm mb-2">
+            Type: <strong>Account Holder</strong> · Investor: <strong>{selectedInvestor?.full_name}</strong>
+          </p>
+        )}
+        <div className="flex flex-col sm:flex-row gap-3 justify-center mt-4">
           <Link to="/user/history" className="btn btn-primary">View My IPOs</Link>
           <Link to="/user/ipos"    className="btn btn-secondary">Back to IPOs</Link>
         </div>
@@ -108,8 +165,23 @@ export default function Apply() {
           <div>
             <label className="label label-required">Participation Type</label>
             <div className="grid grid-cols-2 gap-3 mt-1">
-              {[['INVESTOR', '🏦 Investor', 'Application number required'], ['ACCOUNT_HOLDER', '👤 Account Holder', 'No application number needed']].map(([val, label, desc]) => (
-                <button key={val} type="button" onClick={() => { setType(val); if (val === 'ACCOUNT_HOLDER') { setAppNo(''); setAppNoErr('') } }} disabled={alreadyApplied || submitting}
+              {[
+                ['INVESTOR',      '🏦 Investor',      'You are the actual investor'],
+                ['ACCOUNT_HOLDER','👤 Account Holder', 'Another person invests via your account'],
+              ].map(([val, label, desc]) => (
+                <button key={val} type="button"
+                  onClick={() => {
+                    setType(val)
+                    if (val === 'INVESTOR') {
+                      setSelectedInvestor(null)
+                      setInvestorSearch('')
+                      setInvestorErr('')
+                    } else {
+                      setAppNo('')
+                      setAppNoErr('')
+                    }
+                  }}
+                  disabled={alreadyApplied || submitting}
                   className={`p-4 rounded-xl border-2 text-left transition-all duration-150 ${type === val ? 'border-blue-600 bg-blue-50' : 'border-gray-200 hover:border-gray-300'} ${alreadyApplied ? 'opacity-50 cursor-not-allowed' : ''}`}>
                   <p className="font-semibold text-sm">{label}</p>
                   <p className="text-xs text-gray-500 mt-0.5">{desc}</p>
@@ -117,14 +189,113 @@ export default function Apply() {
               ))}
             </div>
           </div>
+
+          {/* INVESTOR type: Application Number field */}
           {type === 'INVESTOR' && (
             <div className="animate-fade-in">
               <label htmlFor="app-number" className="label label-required">Application Number</label>
-              <input id="app-number" type="text" value={appNo} onChange={e => { setAppNo(e.target.value); setAppNoErr('') }}
-                className={`input ${appNoErr ? 'input-error' : ''}`} placeholder="e.g. APP1234567" disabled={alreadyApplied || submitting} />
-              {appNoErr ? <p className="error-msg">{appNoErr}</p> : <p className="helper-msg">Letters, numbers, /, _, - only. No spaces.</p>}
+              <input id="app-number" type="text" value={appNo}
+                onChange={e => { setAppNo(e.target.value); setAppNoErr('') }}
+                className={`input ${appNoErr ? 'input-error' : ''}`}
+                placeholder="e.g. APP1234567"
+                disabled={alreadyApplied || submitting} />
+              {appNoErr
+                ? <p className="error-msg">{appNoErr}</p>
+                : <p className="helper-msg">Letters, numbers, /, _, - only. No spaces.</p>}
             </div>
           )}
+
+          {/* ACCOUNT_HOLDER type: Searchable investor dropdown */}
+          {type === 'ACCOUNT_HOLDER' && (
+            <div className="animate-fade-in space-y-2">
+              <label className="label label-required">Select Actual Investor</label>
+              <p className="text-xs text-gray-500">
+                You are the <strong>Account Holder</strong> (your account is being used).
+                Select the person who is the <strong>actual investor</strong>.
+              </p>
+
+              {/* Selected investor badge */}
+              {selectedInvestor && (
+                <div className="flex items-center gap-2 p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                  <div className="w-8 h-8 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs font-bold flex-shrink-0">
+                    {selectedInvestor.full_name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-sm text-indigo-900 truncate">{selectedInvestor.full_name}</p>
+                    <p className="text-xs text-indigo-500">@{selectedInvestor.username}</p>
+                  </div>
+                  <button type="button" onClick={() => { setSelectedInvestor(null); setInvestorDropOpen(true) }}
+                    className="text-xs text-indigo-600 hover:text-indigo-800 font-medium">
+                    Change
+                  </button>
+                </div>
+              )}
+
+              {/* Searchable dropdown */}
+              {!selectedInvestor && (
+                <div ref={dropRef} className="relative">
+                  <div className="relative">
+                    <input
+                      id="investor-search"
+                      type="text"
+                      value={investorSearch}
+                      onChange={e => { setInvestorSearch(e.target.value); setInvestorDropOpen(true); setInvestorErr('') }}
+                      onFocus={() => setInvestorDropOpen(true)}
+                      placeholder="Search by name or username…"
+                      disabled={alreadyApplied || submitting || usersLoading}
+                      className={`input pr-10 ${investorErr ? 'input-error' : ''}`}
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
+                      {usersLoading ? (
+                        <span className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin inline-block" />
+                      ) : '🔍'}
+                    </span>
+                  </div>
+
+                  {investorDropOpen && !usersLoading && (
+                    <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-56 overflow-y-auto">
+                      {filteredUsers.length === 0 ? (
+                        <div className="py-4 text-center text-sm text-gray-400">
+                          {investorSearch ? 'No users match your search.' : 'No other users available.'}
+                        </div>
+                      ) : (
+                        filteredUsers.map(user => (
+                          <button key={user.id} type="button"
+                            onMouseDown={() => {
+                              setSelectedInvestor(user)
+                              setInvestorSearch('')
+                              setInvestorDropOpen(false)
+                              setInvestorErr('')
+                            }}
+                            className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-indigo-50 transition-colors">
+                            <div className="w-7 h-7 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs font-bold flex-shrink-0">
+                              {user.full_name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()}
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium text-gray-900">{user.full_name}</p>
+                              <p className="text-xs text-gray-500">@{user.username}</p>
+                            </div>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+              {investorErr && <p className="error-msg">{investorErr}</p>}
+
+              {selectedInvestor && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                  <p className="text-xs text-amber-800">
+                    <strong>Summary:</strong> {selectedInvestor.full_name} is the <strong>Investor</strong>.
+                    You ({profile?.full_name}) are the <strong>Account Holder</strong>.
+                    Investor will receive 80% of profit; you will receive 20%.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
           <form onSubmit={handleSubmit}>
             <button id="apply-submit" type="submit" disabled={alreadyApplied || submitting} className="btn btn-primary w-full btn-lg">
               {submitting ? <><span className="spinner" />Submitting…</> : alreadyApplied ? 'Already Applied' : 'Submit Application'}

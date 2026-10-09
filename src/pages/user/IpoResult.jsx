@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
+import { useAuth } from '../../context/AuthContext'
 import { getParticipationWithResult } from '../../services/ipoService'
 import { formatCurrency, formatDate, formatDateTime, getIpoStatusBadgeClass, getIpoStatusLabel, getResultStatusBadgeClass } from '../../utils/formatters'
 
@@ -13,17 +14,18 @@ function Row({ label, value, highlight }) {
 }
 
 export default function IpoResult() {
+  const { profile } = useAuth()
   const { participationId } = useParams()
   const [data,    setData]    = useState(null)
   const [loading, setLoading] = useState(true)
   const [error,   setError]   = useState('')
 
   useEffect(() => {
-    getParticipationWithResult(participationId)
+    getParticipationWithResult(participationId, profile?.id)
       .then(setData)
       .catch(() => setError('Failed to load result. Please try again.'))
       .finally(() => setLoading(false))
-  }, [participationId])
+  }, [participationId, profile?.id])
 
   if (loading) return <div className="flex justify-center py-20"><div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" /></div>
   if (error)   return <div className="alert-error max-w-lg mx-auto mt-12">{error}</div>
@@ -81,7 +83,14 @@ export default function IpoResult() {
           <div className="card-header"><h2 className="section-title">Settlement Details</h2></div>
           <div className="card-body">
             <Row label="Refund Amount"     value={formatCurrency(result.refund_amount)} />
-            <Row label="Profit"            value={formatCurrency(result.profit_amount)} highlight={result.profit_amount > 0 ? 'text-green-600' : undefined} />
+            <Row label="Total IPO Profit"  value={formatCurrency(result.profit_amount)} highlight={result.profit_amount > 0 ? 'text-green-600' : undefined} />
+            {data.user_role && data.user_role !== 'DIRECT' && (
+              <Row
+                label={`Your Share (${data.profit_share_pct}% ${data.user_role === 'INVESTOR' ? 'Investor' : 'Acct. Holder'})`}
+                value={formatCurrency(data.user_profit)}
+                highlight="text-emerald-700 font-bold"
+              />
+            )}
             <Row label="Tax"               value={formatCurrency(result.tax_amount)} />
             <Row label="Final Settlement"  value={formatCurrency(result.final_settlement_amount)} highlight="text-blue-700" />
           </div>
