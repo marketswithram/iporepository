@@ -13,10 +13,13 @@ function LoadingScreen() {
 }
 
 export function ProtectedRoute({ children }) {
-  const { loading, isAuthenticated } = useAuth()
+  const { loading, isAuthenticated, profile, isAdmin } = useAuth()
   const location = useLocation()
   if (loading) return <LoadingScreen />
   if (!isAuthenticated) return <Navigate to="/login" state={{ from: location }} replace />
+  if (!isAdmin && profile && profile.is_approved === false) {
+    return <Navigate to="/pending-approval" replace />
+  }
   return children
 }
 
@@ -30,8 +33,12 @@ export function AdminRoute({ children }) {
 }
 
 export function PublicOnlyRoute({ children }) {
-  const { loading, isAuthenticated, isAdmin } = useAuth()
+  const { loading, isAuthenticated, isAdmin, profile } = useAuth()
   if (loading) return <LoadingScreen />
-  if (isAuthenticated) return <Navigate to={isAdmin ? '/admin/dashboard' : '/user/dashboard'} replace />
+  if (isAuthenticated) {
+    if (isAdmin) return <Navigate to="/admin/dashboard" replace />
+    if (profile && profile.is_approved === false) return <Navigate to="/pending-approval" replace />
+    return <Navigate to="/user/dashboard" replace />
+  }
   return children
 }

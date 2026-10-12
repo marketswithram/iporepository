@@ -27,7 +27,10 @@ import CreateIpo      from './pages/admin/ipos/CreateIpo'
 import IpoDetails     from './pages/admin/ipos/IpoDetails'
 import ImportResults  from './pages/admin/ipos/ImportResults'
 import AdminUsers     from './pages/admin/Users'
+import UserDetails    from './pages/admin/UserDetails'
+import CreateUser     from './pages/admin/CreateUser'
 import AdminReports   from './pages/admin/Reports'
+import PendingApproval from './pages/public/PendingApproval'
 import NotFound       from './pages/NotFound'
 
 export default function App() {
@@ -44,6 +47,9 @@ export default function App() {
             <Route path="/login"    element={<PublicOnlyRoute><Login /></PublicOnlyRoute>} />
             <Route path="/register" element={<PublicOnlyRoute><Register /></PublicOnlyRoute>} />
           </Route>
+
+          {/* STANDALONE STATUS ROUTES */}
+          <Route path="/pending-approval" element={<PendingApproval />} />
 
           {/* USER */}
           <Route path="/user" element={<ProtectedRoute><UserLayout /></ProtectedRoute>}>
@@ -66,6 +72,8 @@ export default function App() {
             <Route path="ipos/:ipoId"           element={<IpoDetails />} />
             <Route path="ipos/:ipoId/results"   element={<ImportResults />} />
             <Route path="users"                 element={<AdminUsers />} />
+            <Route path="users/create"          element={<CreateUser />} />
+            <Route path="users/:userId"         element={<UserDetails />} />
             <Route path="reports"               element={<AdminReports />} />
           </Route>
 

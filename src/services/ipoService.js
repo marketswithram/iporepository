@@ -407,10 +407,19 @@ export async function getRecentIpos(limit = 10) {
   return data ?? []
 }
 
-export async function getAdminUsers({ page = 1, pageSize = 20, search = '' } = {}) {
+export async function getAdminUsers({ page = 1, pageSize = 20, search = '', approvalStatus = null } = {}) {
   const from = (page - 1) * pageSize
   let query = supabase.from('profiles').select('*', { count: 'exact' })
   if (search) query = query.or(`username.ilike.%${search}%,full_name.ilike.%${search}%,email.ilike.%${search}%`)
+  if (approvalStatus) {
+    if (approvalStatus === 'PENDING') {
+      query = query.or('is_approved.is.false,approval_status.eq.PENDING')
+    } else if (approvalStatus === 'APPROVED') {
+      query = query.eq('is_approved', true)
+    } else {
+      query = query.eq('approval_status', approvalStatus)
+    }
+  }
   const { data, error, count } = await query.order('created_at', { ascending: false }).range(from, from + pageSize - 1)
   if (error) throw error
   return { data: data ?? [], count: count ?? 0 }
@@ -420,6 +429,117 @@ export async function toggleUserActive(userId, isActive) {
   const { data, error } = await supabase.from('profiles').update({ is_active: isActive }).eq('id', userId).select().single()
   if (error) throw error
   return data
+}
+
+export async function adminSetUserApproval(userId, status) {
+  // Try RPC first
+  try {
+    const { data, error } = await supabase.rpc('admin_set_user_approval', {
+      p_user_id: userId,
+      p_status: status,
+    })
+    if (!error && data?.success) return data
+  } catch (err) {
+    console.warn('RPC admin_set_user_approval failed, using direct update:', err)
+  }
+
+  // Fallback direct update on public.profiles
+  const isApproved = status === 'APPROVED'
+  const { data, error } = await supabase
+    .from('profiles')
+    .update({
+      is_approved: isApproved,
+      approval_status: status,
+      approved_at: isApproved ? new Date().toISOString() : null,
+    })
+    .eq('id', userId)
+    .select()
+    .single()
+  if (error) throw error
+  return { success: true, user: data }
+}
+
+export async function adminCreateUser({ email, password, username, fullName, role = 'user' }) {
+  // 1. Try RPC admin_create_user
+  try {
+    const { data, error } = await supabase.rpc('admin_create_user', {
+      p_email: email.trim(),
+      p_password: password,
+      p_username: username.trim().toLowerCase(),
+      p_full_name: fullName.trim(),
+      p_role: role,
+    })
+    if (!error && data?.success) {
+      return data
+    }
+    if (error && error.message) {
+      console.warn('RPC admin_create_user error:', error)
+    }
+  } catch (err) {
+    console.warn('RPC admin_create_user caught error:', err)
+  }
+
+  // 2. Fallback: create via isolated Supabase client without logging out admin
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+  const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+  const { createClient } = await import('@supabase/supabase-js')
+  const tempClient = createClient(supabaseUrl, supabaseAnonKey, {
+    auth: { persistSession: false, autoRefreshToken: false }
+  })
+
+  const { data: signUpData, error: signUpError } = await tempClient.auth.signUp({
+    email: email.trim(),
+    password: password,
+    options: {
+      data: {
+        username: username.trim().toLowerCase(),
+        full_name: fullName.trim(),
+        role: role,
+        is_approved: true,
+      }
+    }
+  })
+  if (signUpError) throw signUpError
+
+  const newUserId = signUpData?.user?.id
+  if (newUserId) {
+    // Ensure profile is marked approved
+    await supabase.from('profiles').update({
+      is_approved: true,
+      approval_status: 'APPROVED',
+      approved_at: new Date().toISOString(),
+    }).eq('id', newUserId)
+  }
+
+  return {
+    success: true,
+    user_id: newUserId,
+    email,
+    username,
+    full_name: fullName,
+  }
+}
+
+export async function getAdminUserDetail(userId) {
+  const { data: profile, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', userId)
+    .single()
+  if (error) throw error
+
+  const [summary, partData, profitDetail] = await Promise.allSettled([
+    getUserProfitLossSummary(userId),
+    getUserParticipatedIpos({ page: 1, pageSize: 100, userId }),
+    getUserIpoProfitDetail(userId),
+  ])
+
+  return {
+    profile,
+    summary: summary.status === 'fulfilled' ? summary.value : null,
+    participations: partData.status === 'fulfilled' ? partData.value?.data ?? [] : [],
+    profitDetail: profitDetail.status === 'fulfilled' ? profitDetail.value ?? [] : [],
+  }
 }
 
 // ---- INVESTOR SELECTION (for Apply form Account Holder dropdown) ----
