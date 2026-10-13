@@ -131,7 +131,7 @@ BEGIN
   -- Encrypt password with pgcrypto
   v_encrypted_pw := extensions.crypt(p_password, extensions.gen_salt('bf'));
 
-  -- Insert into auth.users directly
+  -- Insert into auth.users directly with all GoTrue non-null columns
   INSERT INTO auth.users (
     id,
     instance_id,
@@ -142,6 +142,14 @@ BEGIN
     raw_user_meta_data,
     aud,
     role,
+    confirmation_token,
+    recovery_token,
+    email_change_token_new,
+    email_change,
+    phone_change,
+    phone_change_token,
+    reauthentication_token,
+    is_sso_user,
     created_at,
     updated_at
   ) VALUES (
@@ -154,9 +162,38 @@ BEGIN
     jsonb_build_object('username', p_username, 'full_name', p_full_name, 'role', p_role, 'is_approved', true),
     'authenticated',
     'authenticated',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    false,
     v_now,
     v_now
   );
+
+  -- Insert matching identity into auth.identities
+  INSERT INTO auth.identities (
+    id,
+    user_id,
+    identity_data,
+    provider,
+    provider_id,
+    last_sign_in_at,
+    created_at,
+    updated_at
+  ) VALUES (
+    v_user_id,
+    v_user_id,
+    jsonb_build_object('sub', v_user_id::text, 'email', p_email, 'email_verified', true, 'phone_verified', false),
+    'email',
+    v_user_id::text,
+    v_now,
+    v_now,
+    v_now
+  ) ON CONFLICT (id) DO NOTHING;
 
   -- Insert or update profile (also handled by trigger if present)
   INSERT INTO public.profiles (

@@ -20,19 +20,28 @@ export function formatNumber(value) {
 export function formatDate(value) {
   if (!value) return '—'
   try {
-    const d = new Date(value + 'T00:00:00')
+    const str = String(value).trim()
+    let d
+    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+      d = new Date(str + 'T00:00:00')
+    } else {
+      d = new Date(str)
+    }
+    if (isNaN(d.getTime())) return '—'
     return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })
-  } catch { return value }
+  } catch { return '—' }
 }
 
 export function formatDateTime(value) {
   if (!value) return '—'
   try {
-    return new Date(value).toLocaleString('en-IN', {
+    const d = new Date(value)
+    if (isNaN(d.getTime())) return '—'
+    return d.toLocaleString('en-IN', {
       day: '2-digit', month: 'short', year: 'numeric',
       hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata',
     })
-  } catch { return value }
+  } catch { return '—' }
 }
 
 export function getIpoStatusBadgeClass(status) {

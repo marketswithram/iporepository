@@ -1,22 +1,25 @@
 import { useEffect, useState, useMemo } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { getAdminUsers, toggleUserActive, adminSetUserApproval } from '../../services/ipoService'
+import { getAdminUsers, toggleUserActive, adminSetUserApproval, getUserActivityHistory } from '../../services/ipoService'
 import { formatDateTime, getInitials } from '../../utils/formatters'
 
 export default function AdminUsers() {
   const navigate = useNavigate()
   const [users, setUsers] = useState([])
+  const [historyLogs, setHistoryLogs] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState('ALL') // ALL, PENDING, APPROVED, INACTIVE
+  const [statusFilter, setStatusFilter] = useState('ALL') // ALL, PENDING, APPROVED, INACTIVE, HISTORY
+  const [historyCategory, setHistoryCategory] = useState('ALL') // ALL, CREATED, APPROVALS, STATUS
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
+  const [historyTotal, setHistoryTotal] = useState(0)
   const [actionLoading, setActionLoading] = useState(null)
   const PAGE_SIZE = 20
 
-  const load = () => {
+  const loadUsers = () => {
     setLoading(true)
     setError('')
     const approvalParam = statusFilter === 'PENDING' ? 'PENDING' : statusFilter === 'APPROVED' ? 'APPROVED' : null
@@ -33,9 +36,30 @@ export default function AdminUsers() {
       .finally(() => setLoading(false))
   }
 
+  const loadHistory = () => {
+    setLoading(true)
+    setError('')
+    getUserActivityHistory({
+      page,
+      pageSize: PAGE_SIZE,
+      search,
+      actionFilter: historyCategory,
+    })
+      .then(({ data, count }) => {
+        setHistoryLogs(data)
+        setHistoryTotal(count)
+      })
+      .catch(() => setError('Failed to load user activity history.'))
+      .finally(() => setLoading(false))
+  }
+
   useEffect(() => {
-    load()
-  }, [page, search, statusFilter])
+    if (statusFilter === 'HISTORY') {
+      loadHistory()
+    } else {
+      loadUsers()
+    }
+  }, [page, search, statusFilter, historyCategory])
 
   const pendingCount = useMemo(() => {
     return users.filter(u => u.is_approved === false || u.approval_status === 'PENDING').length
@@ -81,6 +105,64 @@ export default function AdminUsers() {
     }
   }
 
+  const renderEventBadge = (actionType) => {
+    switch (actionType) {
+      case 'CREATED_AND_APPROVED':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+            Created &amp; Approved
+          </span>
+        )
+      case 'CREATED':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+            New Registration
+          </span>
+        )
+      case 'APPROVED':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+            <span>✓</span> Approved
+          </span>
+        )
+      case 'REJECTED':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200">
+            <span>✕</span> Rejected
+          </span>
+        )
+      case 'ACTIVATED':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+            <span>●</span> Activated
+          </span>
+        )
+      case 'DEACTIVATED':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200">
+            <span>⊘</span> Deactivated
+          </span>
+        )
+      case 'ROLE_CHANGED':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-purple-50 text-purple-700 border border-purple-200">
+            <span>★</span> Role Changed
+          </span>
+        )
+      default:
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
+            <span>ℹ</span> Status Updated
+          </span>
+        )
+    }
+  }
+
+  const isHistoryTab = statusFilter === 'HISTORY'
+  const activeCount = isHistoryTab ? historyTotal : total
+
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Header with Title and Create User CTA */}
@@ -88,10 +170,14 @@ export default function AdminUsers() {
         <div>
           <div className="flex items-center gap-3">
             <h1 className="page-title">User Management</h1>
-            <span className="badge badge-blue">{total} Users</span>
+            <span className="badge badge-blue">
+              {isHistoryTab ? `${historyTotal} Events` : `${total} Users`}
+            </span>
           </div>
           <p className="text-gray-500 text-sm mt-1">
-            Manage registrations, verify pending approvals, review user IPO records, and create accounts.
+            {isHistoryTab
+              ? 'Complete chronological audit log of user account creations, approvals, activations, and status changes.'
+              : 'Manage registrations, verify pending approvals, review user IPO records, and create accounts.'}
           </p>
         </div>
 
@@ -111,7 +197,7 @@ export default function AdminUsers() {
       {success && <div className="alert-success">{success}</div>}
 
       {/* Pending Approval Banner if any user needs review */}
-      {statusFilter !== 'PENDING' && pendingCount > 0 && (
+      {!isHistoryTab && statusFilter !== 'PENDING' && pendingCount > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-amber-900">
           <div className="flex items-center gap-3">
             <span className="text-2xl">⏳</span>
@@ -133,13 +219,14 @@ export default function AdminUsers() {
 
       {/* Filters and Search Bar */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-white p-3 rounded-xl border border-gray-200 shadow-sm">
-        {/* Filter Tabs */}
+        {/* Navigation Tabs */}
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 lg:pb-0">
           {[
             { id: 'ALL', label: 'All Users' },
             { id: 'PENDING', label: 'Pending Approval', countBadge: true },
             { id: 'APPROVED', label: 'Approved' },
             { id: 'INACTIVE', label: 'Inactive' },
+            { id: 'HISTORY', label: 'History', icon: '🕒' },
           ].map(tab => (
             <button
               key={tab.id}
@@ -150,6 +237,7 @@ export default function AdminUsers() {
                   : 'text-gray-600 hover:bg-gray-100'
               }`}
             >
+              {tab.icon && <span>{tab.icon}</span>}
               <span>{tab.label}</span>
               {tab.countBadge && pendingCount > 0 && (
                 <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
@@ -162,28 +250,170 @@ export default function AdminUsers() {
           ))}
         </div>
 
-        {/* Search input */}
-        <div className="relative min-w-[260px] max-w-sm">
-          <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400 text-sm">
-            🔍
-          </span>
-          <input
-            type="text"
-            value={search}
-            onChange={handleSearch}
-            placeholder="Search name, username, email…"
-            className="input pl-9 py-1.5 text-sm w-full"
-          />
+        {/* Search input & history subfilters */}
+        <div className="flex items-center gap-2">
+          {isHistoryTab && (
+            <select
+              value={historyCategory}
+              onChange={(e) => { setHistoryCategory(e.target.value); setPage(1) }}
+              className="input py-1.5 px-2.5 text-xs text-gray-700 bg-gray-50 border-gray-300 rounded-lg"
+            >
+              <option value="ALL">All Events</option>
+              <option value="CREATED">Created &amp; Registered</option>
+              <option value="APPROVALS">Approvals &amp; Rejections</option>
+              <option value="STATUS">Active / Deactivated</option>
+            </select>
+          )}
+
+          <div className="relative min-w-[240px] max-w-sm">
+            <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400 text-sm">
+              🔍
+            </span>
+            <input
+              type="text"
+              value={search}
+              onChange={handleSearch}
+              placeholder={isHistoryTab ? "Search history by user, email, action…" : "Search name, username, email…"}
+              className="input pl-9 py-1.5 text-sm w-full"
+            />
+          </div>
         </div>
       </div>
 
-      {/* Main Table */}
+      {/* ── Content View ── */}
       {loading ? (
         <div className="flex flex-col items-center justify-center py-20 bg-white rounded-xl border border-gray-200">
           <div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mb-3" />
-          <p className="text-gray-500 text-sm">Loading users…</p>
+          <p className="text-gray-500 text-sm">{isHistoryTab ? 'Loading activity history…' : 'Loading users…'}</p>
         </div>
+      ) : isHistoryTab ? (
+        /* ── HISTORY TAB VIEW (Latest to Old) ── */
+        historyLogs.length === 0 ? (
+          <div className="bg-white rounded-xl border border-gray-200 py-16 text-center text-gray-400">
+            <p className="text-3xl mb-3">🕒</p>
+            <p className="font-medium text-gray-600">No activity history recorded yet</p>
+            <p className="text-xs text-gray-400 mt-1">
+              Events such as user creation, approvals, and activations will be listed here from latest to oldest.
+            </p>
+          </div>
+        ) : (
+          <>
+            <div className="table-wrapper bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Time</th>
+                    <th>User</th>
+                    <th>Action</th>
+                    <th>Details &amp; Status Change</th>
+                    <th>Performed By</th>
+                    <th className="text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {historyLogs.map(log => {
+                    const user = log.user || {}
+                    const actor = log.actor
+                    const userId = log.user_id || user.id
+
+                    return (
+                      <tr
+                        key={log.id}
+                        onClick={() => userId && navigate(`/admin/users/${userId}`)}
+                        className="cursor-pointer hover:bg-indigo-50/40 transition-colors"
+                      >
+                        {/* Time */}
+                        <td className="whitespace-nowrap text-xs text-gray-500 font-mono">
+                          {formatDateTime(log.created_at)}
+                        </td>
+
+                        {/* User */}
+                        <td>
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 font-bold text-xs flex items-center justify-center flex-shrink-0">
+                              {getInitials(user.full_name || user.username || 'User')}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-semibold text-gray-900 hover:text-indigo-600 text-xs sm:text-sm">
+                                {user.full_name || user.username || 'System User'}
+                              </p>
+                              <p className="text-[11px] text-gray-500">
+                                @{user.username || '—'} • {user.email || '—'}
+                              </p>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Action Badge */}
+                        <td>
+                          {renderEventBadge(log.action_type)}
+                        </td>
+
+                        {/* Details */}
+                        <td className="text-xs text-gray-700">
+                          <p className="font-medium text-gray-900">{log.action_title}</p>
+                          <p className="text-gray-500 mt-0.5">{log.details}</p>
+                        </td>
+
+                        {/* Performed By */}
+                        <td>
+                          <span className="inline-flex items-center gap-1 text-xs text-gray-600 bg-gray-100 px-2 py-0.5 rounded-md font-medium">
+                            <span>🛡️</span>
+                            <span>{actor?.full_name || actor?.username || 'Administrator'}</span>
+                          </span>
+                        </td>
+
+                        {/* Actions */}
+                        <td className="text-right" onClick={e => e.stopPropagation()}>
+                          {userId ? (
+                            <Link
+                              to={`/admin/users/${userId}`}
+                              className="btn btn-secondary btn-sm text-xs py-1 px-2.5"
+                            >
+                              Details →
+                            </Link>
+                          ) : (
+                            <span className="text-xs text-gray-400">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination for History */}
+            {historyTotal > PAGE_SIZE && (
+              <div className="flex justify-between items-center bg-white px-4 py-3 rounded-xl border border-gray-200 text-sm">
+                <span className="text-gray-500">
+                  Showing {((page - 1) * PAGE_SIZE) + 1}–{Math.min(page * PAGE_SIZE, historyTotal)} of {historyTotal} events (Latest to Old)
+                </span>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setPage(p => Math.max(1, p - 1))}
+                    disabled={page === 1}
+                    className="btn btn-secondary btn-sm"
+                  >
+                    ← Prev
+                  </button>
+                  <span className="px-3 py-1 text-xs font-semibold text-gray-700 bg-gray-100 rounded-lg flex items-center">
+                    Page {page} of {Math.ceil(historyTotal / PAGE_SIZE)}
+                  </span>
+                  <button
+                    onClick={() => setPage(p => p + 1)}
+                    disabled={page * PAGE_SIZE >= historyTotal}
+                    className="btn btn-secondary btn-sm"
+                  >
+                    Next →
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
+        )
       ) : users.length === 0 ? (
+        /* ── USERS TAB EMPTY ── */
         <div className="bg-white rounded-xl border border-gray-200 py-16 text-center text-gray-400">
           <p className="text-3xl mb-3">👥</p>
           <p className="font-medium text-gray-600">No users match the criteria</p>
@@ -192,6 +422,7 @@ export default function AdminUsers() {
           </p>
         </div>
       ) : (
+        /* ── STANDARD USERS TABLE VIEW ── */
         <>
           <div className="table-wrapper bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
             <table className="table">
@@ -364,4 +595,3 @@ export default function AdminUsers() {
     </div>
   )
 }
-

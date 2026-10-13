@@ -425,98 +425,350 @@ export async function getAdminUsers({ page = 1, pageSize = 20, search = '', appr
   return { data: data ?? [], count: count ?? 0 }
 }
 
+export async function logUserActivity({ userId, actionType, actionTitle, details = '', actorId = null, metadata = {} }) {
+  if (!userId) return
+  try {
+    const { error } = await supabase.from('user_activity_logs').insert({
+      user_id: userId,
+      action_type: actionType,
+      action_title: actionTitle,
+      details: details,
+      actor_id: actorId,
+      metadata: metadata,
+      created_at: new Date().toISOString(),
+    })
+    if (error && error.code !== '42P01') {
+      console.warn('logUserActivity error:', error.message)
+    }
+  } catch (err) {
+    // Non-blocking log
+    console.warn('logUserActivity caught error:', err)
+  }
+}
+
+export async function getUserActivityHistory({ page = 1, pageSize = 25, search = '', actionFilter = null } = {}) {
+  const from = (page - 1) * pageSize
+
+  // 1. Try querying public.user_activity_logs
+  try {
+    let query = supabase
+      .from('user_activity_logs')
+      .select(`
+        id, user_id, action_type, action_title, details, actor_id, metadata, created_at,
+        user:profiles!user_id(id, username, full_name, email, role, is_active, is_approved, approval_status),
+        actor:profiles!actor_id(id, username, full_name)
+      `, { count: 'exact' })
+      .order('created_at', { ascending: false })
+
+    if (actionFilter && actionFilter !== 'ALL') {
+      if (actionFilter === 'APPROVALS') {
+        query = query.in('action_type', ['APPROVED', 'REJECTED', 'APPROVAL_STATUS_CHANGED'])
+      } else if (actionFilter === 'STATUS') {
+        query = query.in('action_type', ['ACTIVATED', 'DEACTIVATED'])
+      } else if (actionFilter === 'CREATED') {
+        query = query.in('action_type', ['CREATED', 'CREATED_AND_APPROVED'])
+      } else {
+        query = query.eq('action_type', actionFilter)
+      }
+    }
+
+    const { data, error, count } = await query.range(from, from + pageSize - 1)
+
+    if (!error && data) {
+      let filtered = data
+      if (search) {
+        const s = search.toLowerCase()
+        filtered = filtered.filter(item => {
+          const u = item.user
+          return (
+            u?.username?.toLowerCase().includes(s) ||
+            u?.full_name?.toLowerCase().includes(s) ||
+            u?.email?.toLowerCase().includes(s) ||
+            item.action_title?.toLowerCase().includes(s) ||
+            item.details?.toLowerCase().includes(s)
+          )
+        })
+      }
+      return { data: filtered, count: count ?? filtered.length }
+    }
+  } catch (err) {
+    console.warn('user_activity_logs table query failed, using synthetic fallback:', err)
+  }
+
+  // 2. Fallback: synthesize history events from profiles table if table not yet migrated
+  try {
+    const { data: profiles, error: pError } = await supabase
+      .from('profiles')
+      .select('id, username, full_name, email, role, is_active, is_approved, approval_status, approved_at, created_at, updated_at')
+      .order('created_at', { ascending: false })
+
+    if (pError || !profiles) return { data: [], count: 0 }
+
+    const syntheticLogs = []
+
+    for (const p of profiles) {
+      // Creation Event
+      const isApprovedAtStart = p.is_approved === true
+      syntheticLogs.push({
+        id: `created-${p.id}`,
+        user_id: p.id,
+        action_type: isApprovedAtStart ? 'CREATED_AND_APPROVED' : 'CREATED',
+        action_title: isApprovedAtStart ? 'Account Created & Approved' : 'New Registration Submitted',
+        details: isApprovedAtStart
+          ? `Account for ${p.full_name} (@${p.username}) was created with instant approval.`
+          : `User @${p.username} registered and requested access.`,
+        created_at: p.created_at,
+        user: p,
+        actor: null,
+      })
+
+      // Approval Event (if approved after creation)
+      if (p.is_approved && p.approved_at) {
+        const createTime = new Date(p.created_at).getTime()
+        const approveTime = new Date(p.approved_at).getTime()
+        if (approveTime > createTime + 10000) {
+          syntheticLogs.push({
+            id: `approved-${p.id}`,
+            user_id: p.id,
+            action_type: 'APPROVED',
+            action_title: 'User Approved',
+            details: `User @${p.username} was approved with platform access.`,
+            created_at: p.approved_at,
+            user: p,
+            actor: null,
+          })
+        }
+      }
+
+      // Inactive Event
+      if (!p.is_active && p.updated_at) {
+        syntheticLogs.push({
+          id: `deactivated-${p.id}`,
+          user_id: p.id,
+          action_type: 'DEACTIVATED',
+          action_title: 'User Account Deactivated',
+          details: `User @${p.username} account was deactivated / suspended.`,
+          created_at: p.updated_at,
+          user: p,
+          actor: null,
+        })
+      }
+    }
+
+    // Sort descending by created_at (latest to old)
+    syntheticLogs.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+
+    let result = syntheticLogs
+    if (search) {
+      const s = search.toLowerCase()
+      result = result.filter(item => {
+        const u = item.user
+        return (
+          u?.username?.toLowerCase().includes(s) ||
+          u?.full_name?.toLowerCase().includes(s) ||
+          u?.email?.toLowerCase().includes(s) ||
+          item.action_title?.toLowerCase().includes(s) ||
+          item.details?.toLowerCase().includes(s)
+        )
+      })
+    }
+
+    if (actionFilter && actionFilter !== 'ALL') {
+      if (actionFilter === 'APPROVALS') {
+        result = result.filter(i => ['APPROVED', 'REJECTED'].includes(i.action_type))
+      } else if (actionFilter === 'STATUS') {
+        result = result.filter(i => ['ACTIVATED', 'DEACTIVATED'].includes(i.action_type))
+      } else if (actionFilter === 'CREATED') {
+        result = result.filter(i => ['CREATED', 'CREATED_AND_APPROVED'].includes(i.action_type))
+      }
+    }
+
+    const paged = result.slice(from, from + pageSize)
+    return { data: paged, count: result.length }
+  } catch (err) {
+    console.error('Failed to generate activity history:', err)
+    return { data: [], count: 0 }
+  }
+}
+
 export async function toggleUserActive(userId, isActive) {
   const { data, error } = await supabase.from('profiles').update({ is_active: isActive }).eq('id', userId).select().single()
   if (error) throw error
+
+  // Log user status change
+  await logUserActivity({
+    userId,
+    actionType: isActive ? 'ACTIVATED' : 'DEACTIVATED',
+    actionTitle: isActive ? 'User Account Activated' : 'User Account Deactivated',
+    details: isActive
+      ? `User @${data.username} account was reactivated by administrator.`
+      : `User @${data.username} account was deactivated / suspended by administrator.`,
+    metadata: { is_active: isActive, username: data.username, email: data.email }
+  })
+
   return data
 }
 
 export async function adminSetUserApproval(userId, status) {
-  // Try RPC first
+  let result = null
+
+  // 1. Try RPC admin_set_user_approval
   try {
     const { data, error } = await supabase.rpc('admin_set_user_approval', {
       p_user_id: userId,
       p_status: status,
     })
-    if (!error && data?.success) return data
+    if (!error && data?.success) result = data
   } catch (err) {
     console.warn('RPC admin_set_user_approval failed, using direct update:', err)
   }
 
-  // Fallback direct update on public.profiles
+  // 2. Direct update fallback
+  if (!result) {
+    const isApproved = status === 'APPROVED'
+    const { data, error } = await supabase
+      .from('profiles')
+      .update({
+        is_approved: isApproved,
+        approval_status: status,
+        approved_at: isApproved ? new Date().toISOString() : null,
+      })
+      .eq('id', userId)
+      .select()
+      .single()
+    if (error) throw error
+    result = { success: true, user: data }
+  }
+
+  // Log approval action
   const isApproved = status === 'APPROVED'
-  const { data, error } = await supabase
-    .from('profiles')
-    .update({
-      is_approved: isApproved,
-      approval_status: status,
-      approved_at: isApproved ? new Date().toISOString() : null,
-    })
-    .eq('id', userId)
-    .select()
-    .single()
-  if (error) throw error
-  return { success: true, user: data }
+  const isRejected = status === 'REJECTED'
+  await logUserActivity({
+    userId,
+    actionType: isApproved ? 'APPROVED' : isRejected ? 'REJECTED' : 'APPROVAL_STATUS_CHANGED',
+    actionTitle: isApproved ? 'User Approved' : isRejected ? 'User Registration Rejected' : `Approval Status: ${status}`,
+    details: isApproved
+      ? 'User registration was approved with full system access.'
+      : isRejected
+      ? 'User registration was rejected by administrator.'
+      : `Approval status was updated to ${status}.`,
+    metadata: { approval_status: status }
+  })
+
+  return result
 }
 
 export async function adminCreateUser({ email, password, username, fullName, role = 'user' }) {
-  // 1. Try RPC admin_create_user
+  const cleanEmail = email.trim().toLowerCase()
+  const cleanUsername = username.trim().toLowerCase()
+  const cleanFullName = fullName.trim()
+
+  // 1. Pre-validation for duplicate username or email
   try {
-    const { data, error } = await supabase.rpc('admin_create_user', {
-      p_email: email.trim(),
-      p_password: password,
-      p_username: username.trim().toLowerCase(),
-      p_full_name: fullName.trim(),
-      p_role: role,
-    })
-    if (!error && data?.success) {
-      return data
-    }
-    if (error && error.message) {
-      console.warn('RPC admin_create_user error:', error)
-    }
-  } catch (err) {
-    console.warn('RPC admin_create_user caught error:', err)
-  }
+    const { data: existingUser } = await supabase
+      .from('profiles')
+      .select('id, username, email')
+      .or(`email.eq.${cleanEmail},username.eq.${cleanUsername}`)
+      .maybeSingle()
 
-  // 2. Fallback: create via isolated Supabase client without logging out admin
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-  const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
-  const { createClient } = await import('@supabase/supabase-js')
-  const tempClient = createClient(supabaseUrl, supabaseAnonKey, {
-    auth: { persistSession: false, autoRefreshToken: false }
-  })
-
-  const { data: signUpData, error: signUpError } = await tempClient.auth.signUp({
-    email: email.trim(),
-    password: password,
-    options: {
-      data: {
-        username: username.trim().toLowerCase(),
-        full_name: fullName.trim(),
-        role: role,
-        is_approved: true,
+    if (existingUser) {
+      if (existingUser.email?.toLowerCase() === cleanEmail) {
+        return { error: 'A user with this email address already exists.' }
+      }
+      if (existingUser.username?.toLowerCase() === cleanUsername) {
+        return { error: 'A user with this username already exists.' }
       }
     }
-  })
-  if (signUpError) throw signUpError
-
-  const newUserId = signUpData?.user?.id
-  if (newUserId) {
-    // Ensure profile is marked approved
-    await supabase.from('profiles').update({
-      is_approved: true,
-      approval_status: 'APPROVED',
-      approved_at: new Date().toISOString(),
-    }).eq('id', newUserId)
+  } catch (err) {
+    // Continue
   }
 
-  return {
-    success: true,
-    user_id: newUserId,
-    email,
-    username,
-    full_name: fullName,
+  // 2. Primary: Create user via isolated Supabase client using official GoTrue Auth API
+  // This guarantees full GoTrue schema integrity (tokens, password encryption, auth.identities)
+  // preventing 500 "Database error querying schema" on login, without signing out the current admin.
+  try {
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+    const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+    const { createClient } = await import('@supabase/supabase-js')
+    const tempClient = createClient(supabaseUrl, supabaseAnonKey, {
+      auth: { persistSession: false, autoRefreshToken: false }
+    })
+
+    const { data: signUpData, error: signUpError } = await tempClient.auth.signUp({
+      email: cleanEmail,
+      password: password,
+      options: {
+        data: {
+          username: cleanUsername,
+          full_name: cleanFullName,
+          role: role,
+          is_approved: true,
+        }
+      }
+    })
+
+    if (signUpError) {
+      throw signUpError
+    }
+
+    const newUserId = signUpData?.user?.id
+    if (newUserId) {
+      // Ensure profile record is immediately active and approved
+      await supabase.from('profiles').upsert({
+        id: newUserId,
+        username: cleanUsername,
+        full_name: cleanFullName,
+        email: cleanEmail,
+        role: role,
+        is_active: true,
+        is_approved: true,
+        approval_status: 'APPROVED',
+        approved_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+
+      // Log in user activity history
+      await logUserActivity({
+        userId: newUserId,
+        actionType: 'CREATED_AND_APPROVED',
+        actionTitle: 'Account Created & Auto-Approved',
+        details: `Account for ${cleanFullName} (@${cleanUsername}) was created by administrator with instant approval.`,
+        metadata: { username: cleanUsername, email: cleanEmail, role, auto_approved: true }
+      })
+
+      return {
+        success: true,
+        user_id: newUserId,
+        email: cleanEmail,
+        username: cleanUsername,
+        full_name: cleanFullName,
+      }
+    }
+  } catch (authErr) {
+    console.warn('Isolated auth.signUp error, falling back to RPC:', authErr)
+    // 3. Fallback: Try RPC admin_create_user
+    try {
+      const { data, error } = await supabase.rpc('admin_create_user', {
+        p_email: cleanEmail,
+        p_password: password,
+        p_username: cleanUsername,
+        p_full_name: cleanFullName,
+        p_role: role,
+      })
+      if (!error && data?.success) {
+        await logUserActivity({
+          userId: data.user_id,
+          actionType: 'CREATED_AND_APPROVED',
+          actionTitle: 'Account Created & Auto-Approved',
+          details: `Account for ${cleanFullName} (@${cleanUsername}) was created by administrator.`,
+          metadata: { username: cleanUsername, email: cleanEmail, role }
+        })
+        return data
+      }
+      return { error: error?.message || authErr?.message || 'Failed to create user' }
+    } catch (rpcErr) {
+      return { error: authErr?.message || rpcErr?.message || 'Failed to create user' }
+    }
   }
 }
 
