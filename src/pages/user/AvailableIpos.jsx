@@ -49,7 +49,10 @@ export default function AvailableIpos() {
               <div className="flex justify-between"><span>Opens</span><span>{formatDate(ipo.start_date)}</span></div>
               <div className="flex justify-between"><span>Closes</span><span>{formatDate(ipo.end_date)}</span></div>
             </div>
-            <Link to={`/user/apply/${ipo.id}`} className="btn btn-primary w-full">Apply Now</Link>
+            <div className="flex gap-2">
+              <Link to={`/ipos/${ipo.id}`} className="btn btn-secondary flex-1">Details</Link>
+              <Link to={`/user/apply/${ipo.id}`} className="btn btn-primary flex-1">Apply Now</Link>
+            </div>
           </div>
         ))}
       </div>

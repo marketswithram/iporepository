@@ -47,7 +47,8 @@ export default function IpoDetails() {
       setIpo(ipoData)
       setParticipants(parts)
     } catch (err) {
-      setError('Failed to load IPO details.')
+      console.error('Error loading IPO details:', err)
+      setError(err?.message || 'Failed to load IPO details.')
     } finally {
       setLoading(false)
     }
@@ -152,6 +153,9 @@ export default function IpoDetails() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Link to={`/ipos/${ipoId}`} target="_blank" rel="noopener noreferrer" className="btn btn-secondary">
+            🌐 View Details Page ↗
+          </Link>
           {transitions.map(s => (
             <button key={s} onClick={() => handleStatusChange(s)} disabled={statusLoading}
               className={STATUS_BTN_CLASS[s] ?? 'btn btn-secondary'}>
@@ -159,12 +163,24 @@ export default function IpoDetails() {
             </button>
           ))}
           {ipo.status === 'PROCESSING' && (
-            <Link to={`/admin/ipos/${ipoId}/results`} className="btn bg-indigo-600 text-white hover:bg-indigo-700">
-              📥 Import Results
-            </Link>
+            <>
+              <Link to={`/admin/ipos/${ipoId}/automated-settlement`} className="btn bg-emerald-600 text-white hover:bg-emerald-700 font-semibold shadow-xs">
+                ⚡ Automated Settlement
+              </Link>
+              <Link to={`/admin/ipos/${ipoId}/results`} className="btn bg-indigo-600 text-white hover:bg-indigo-700">
+                📥 Import Results
+              </Link>
+            </>
           )}
           {ipo.status === 'COMPLETED' && (
-            <Link to={`/admin/ipos/${ipoId}/results`} className="btn btn-secondary">View Results</Link>
+            <>
+              <Link to={`/admin/ipos/${ipoId}/automated-settlement`} className="btn btn-secondary">
+                ⚡ Settlement Details
+              </Link>
+              <Link to={`/admin/ipos/${ipoId}/results`} className="btn btn-secondary">
+                View Results
+              </Link>
+            </>
           )}
         </div>
       </div>
@@ -203,24 +219,33 @@ export default function IpoDetails() {
       {/* Participants */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
         <div className="px-6 py-4 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div className="flex gap-1">
-            {[['investors', `Investors (${investors.length})`], ['account_holders', `Acct. Holders (${accountHolders.length})`]].map(([key, label]) => (
+          <div className="flex gap-1 flex-wrap">
+            {[
+              ['investors', `Investors (${investors.length})`],
+              ['account_holders', `Acct. Holders (${accountHolders.length})`],
+              ...(ipo.details ? [['prospectus', '📊 Prospectus Details']] : []),
+            ].map(([key, label]) => (
               <button key={key} onClick={() => setTab(key)}
-                className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${tab === key ? 'bg-indigo-100 text-indigo-700' : 'text-gray-500 hover:bg-gray-100'}`}>
+                className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${tab === key ? 'bg-indigo-100 text-indigo-700 font-semibold' : 'text-gray-500 hover:bg-gray-100'}`}>
                 {label}
               </button>
             ))}
           </div>
-          <div className="flex flex-col items-end gap-1">
-            <button onClick={handleCopyList} disabled={copying} className="btn btn-secondary btn-sm">
-              {copying ? <span className="spinner" /> : '📋'} Copy Participant List
-            </button>
-            {copyMsg && (
-              <span className={`text-xs ${copyMsg.startsWith('✅') ? 'text-green-700' : copyMsg.startsWith('⚠') ? 'text-amber-600' : 'text-red-600'}`}>
-                {copyMsg}
-              </span>
-            )}
-            <p className="text-xs text-gray-400">Generates 11-column Excel-ready TSV data</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <Link to={`/admin/ipos/${ipoId}/automated-settlement`} className="btn bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 btn-sm font-medium">
+              ⚡ Automated Settlement
+            </Link>
+            <div className="flex flex-col items-end gap-1">
+              <button onClick={handleCopyList} disabled={copying} className="btn btn-secondary btn-sm">
+                {copying ? <span className="spinner" /> : '📋'} Copy Participant List
+              </button>
+              {copyMsg && (
+                <span className={`text-xs ${copyMsg.startsWith('✅') ? 'text-green-700' : copyMsg.startsWith('⚠') ? 'text-amber-600' : 'text-red-600'}`}>
+                  {copyMsg}
+                </span>
+              )}
+              <p className="text-xs text-gray-400">Generates 11-column Excel-ready TSV data</p>
+            </div>
           </div>
         </div>
 
@@ -252,6 +277,100 @@ export default function IpoDetails() {
                 ))}
               </tbody>
             </table>
+          ) : tab === 'prospectus' && ipo.details ? (
+            <div className="p-6 space-y-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-bold text-gray-900 text-base">{ipo.details.company_name || ipo.ipo_name}</h3>
+                  <p className="text-xs text-gray-500">
+                    {ipo.details.ipo_type || 'Mainboard'} · {ipo.details.market_segment || 'BSE, NSE'} · Imported via {ipo.details.source || 'IPO Gyani'}
+                  </p>
+                </div>
+                <Link to={`/ipos/${ipoId}`} target="_blank" rel="noopener noreferrer" className="btn btn-primary btn-sm">
+                  Open Public Detail Page ↗
+                </Link>
+              </div>
+
+              {/* GMP & Subscription Preview */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-center">
+                  <p className="text-xs text-emerald-700 font-medium">GMP Premium</p>
+                  <p className="text-2xl font-bold text-emerald-800 mt-1">
+                    {ipo.details.gmp_data?.premium !== null && ipo.details.gmp_data?.premium !== undefined ? `+₹${ipo.details.gmp_data.premium}` : '—'}
+                  </p>
+                  {ipo.details.gmp_data?.premium_percentage !== null && ipo.details.gmp_data?.premium_percentage !== undefined && (
+                    <p className="text-xs text-emerald-600">({ipo.details.gmp_data.premium_percentage}%)</p>
+                  )}
+                </div>
+
+                <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 text-center">
+                  <p className="text-xs text-gray-500 font-medium">Est. Listing Price</p>
+                  <p className="text-2xl font-bold text-gray-900 mt-1">
+                    {ipo.details.gmp_data?.estimated_listing_price ? `₹${ipo.details.gmp_data.estimated_listing_price}` : '—'}
+                  </p>
+                  <p className="text-xs text-gray-400">{ipo.details.gmp_data?.estimated_listing_price_formula || 'Issue + GMP'}</p>
+                </div>
+
+                <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 text-center">
+                  <p className="text-xs text-indigo-700 font-medium">Est. Profit / Lot</p>
+                  <p className="text-2xl font-bold text-indigo-800 mt-1">
+                    {ipo.details.gmp_data?.estimated_profit_per_lot ? `₹${ipo.details.gmp_data.estimated_profit_per_lot.toLocaleString('en-IN')}` : '—'}
+                  </p>
+                  <p className="text-xs text-indigo-600">Lot: {ipo.details.lot_size || '—'} shares</p>
+                </div>
+              </div>
+
+              {/* Subscription Row */}
+              {ipo.details.subscription_data && (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+                  <div className="bg-gray-50 rounded-lg p-2.5 border border-gray-100">
+                    <p className="text-xs text-gray-500">Total Subscription</p>
+                    <p className="font-bold text-gray-900 mt-0.5">{ipo.details.subscription_data.total || '—'}</p>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-2.5 border border-gray-100">
+                    <p className="text-xs text-gray-500">Retail</p>
+                    <p className="font-bold text-blue-700 mt-0.5">{ipo.details.subscription_data.retail || '—'}</p>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-2.5 border border-gray-100">
+                    <p className="text-xs text-gray-500">NII / HNI</p>
+                    <p className="font-bold text-purple-700 mt-0.5">{ipo.details.subscription_data.nii || '—'}</p>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-2.5 border border-gray-100">
+                    <p className="text-xs text-gray-500">QIB</p>
+                    <p className="font-bold text-indigo-700 mt-0.5">{ipo.details.subscription_data.qib || '—'}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Lot Sizes */}
+              {ipo.details.lot_size_details?.length > 0 && (
+                <div>
+                  <h4 className="font-semibold text-gray-800 text-xs uppercase tracking-wide mb-2">Lot Size Breakdown</h4>
+                  <div className="table-wrapper">
+                    <table className="table">
+                      <thead>
+                        <tr>
+                          <th>Category</th>
+                          <th className="text-right">Lots</th>
+                          <th className="text-right">Shares</th>
+                          <th className="text-right">Amount (₹)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {ipo.details.lot_size_details.map((l, idx) => (
+                          <tr key={idx}>
+                            <td className="font-medium text-gray-800">{l.category}</td>
+                            <td className="text-right">{l.lots}</td>
+                            <td className="text-right">{l.shares ? l.shares.toLocaleString('en-IN') : '—'}</td>
+                            <td className="text-right font-semibold text-gray-900">{l.amount ? formatCurrency(l.amount) : '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
           ) : (
             <table className="table">
               <thead>

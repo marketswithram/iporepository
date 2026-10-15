@@ -47,7 +47,9 @@ export default function PublicIpos() {
           <div key={ipo.id} className="card p-6 hover:shadow-md transition-shadow duration-200">
             <div className="flex items-start justify-between mb-3">
               <div>
-                <h2 className="font-bold text-gray-900 text-lg">{ipo.ipo_name}</h2>
+                <Link to={`/ipos/${ipo.id}`} className="font-bold text-gray-900 text-lg hover:text-blue-600 transition-colors">
+                  {ipo.ipo_name}
+                </Link>
                 <p className="text-xs text-gray-400 mt-0.5">{ipo.ipo_code}</p>
               </div>
               <span className="badge badge-green">Open</span>
@@ -66,7 +68,10 @@ export default function PublicIpos() {
                 <span>{formatDate(ipo.end_date)}</span>
               </div>
             </div>
-            <Link to="/login" className="btn btn-primary w-full">Log In to Apply</Link>
+            <div className="flex gap-2">
+              <Link to={`/ipos/${ipo.id}`} className="btn btn-secondary flex-1">View Details</Link>
+              <Link to="/login" className="btn btn-primary flex-1">Log In to Apply</Link>
+            </div>
           </div>
         ))}
       </div>

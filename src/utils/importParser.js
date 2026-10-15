@@ -1,4 +1,4 @@
-import { parseNumericFromImport, parseBooleanFromImport } from './formatters'
+import { parseNumericFromImport, parseBooleanFromImport } from './formatters.js'
 
 // =============================================================================
 // Header normalization map

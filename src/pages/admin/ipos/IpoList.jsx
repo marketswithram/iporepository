@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { getAdminIpos } from '../../../services/ipoService'
+import { getAdminIpos, updateIpoStatus } from '../../../services/ipoService'
 import { formatCurrency, formatDate, getIpoStatusBadgeClass, getIpoStatusLabel } from '../../../utils/formatters'
 
 const STATUSES = ['', 'DRAFT', 'OPEN', 'CLOSED', 'PROCESSING', 'COMPLETED', 'CANCELLED']
@@ -13,15 +13,36 @@ export default function IpoList() {
   const [status,  setStatus]  = useState('')
   const [page,    setPage]    = useState(1)
   const [total,   setTotal]   = useState(0)
+  const [publishing, setPublishing] = useState(null) // ipo id being published
   const PAGE_SIZE = 15
 
-  useEffect(() => {
+  const reload = () => {
     setLoading(true)
     getAdminIpos({ page, pageSize: PAGE_SIZE, status: status || null, search })
       .then(({ data, count }) => { setIpos(data); setTotal(count) })
       .catch(() => setError('Failed to load IPOs.'))
       .finally(() => setLoading(false))
+  }
+
+  useEffect(() => {
+    reload()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, status, search])
+
+  const handleQuickPublish = async (ipoId, e) => {
+    e.stopPropagation()
+    e.preventDefault()
+    if (!window.confirm('Publish this IPO? It will become visible to all users.')) return
+    setPublishing(ipoId)
+    try {
+      await updateIpoStatus(ipoId, 'OPEN')
+      reload()
+    } catch (err) {
+      setError(err?.message || 'Failed to publish IPO.')
+    } finally {
+      setPublishing(null)
+    }
+  }
 
   // Debounce search
   const handleSearch = (e) => { setSearch(e.target.value); setPage(1) }
@@ -69,7 +90,21 @@ export default function IpoList() {
                     <td className="text-xs text-gray-500">{formatDate(ipo.end_date)}</td>
                     <td>{ipo.overall_profit != null ? <span className="text-green-700 font-semibold">{formatCurrency(ipo.overall_profit)}</span> : '—'}</td>
                     <td className="text-xs text-gray-400">{ipo.profiles?.username ?? '—'}</td>
-                    <td><Link to={`/admin/ipos/${ipo.id}`} className="text-indigo-600 text-xs font-medium hover:underline whitespace-nowrap">Manage →</Link></td>
+                    <td>
+                      <div className="flex items-center gap-2">
+                        {ipo.status === 'DRAFT' && (
+                          <button
+                            onClick={(e) => handleQuickPublish(ipo.id, e)}
+                            disabled={publishing === ipo.id}
+                            className="btn bg-green-600 text-white hover:bg-green-700 text-xs px-2 py-1 leading-none"
+                            title="Publish IPO (make visible to users)"
+                          >
+                            {publishing === ipo.id ? '…' : '▶ Publish'}
+                          </button>
+                        )}
+                        <Link to={`/admin/ipos/${ipo.id}`} className="text-indigo-600 text-xs font-medium hover:underline whitespace-nowrap">Manage →</Link>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>

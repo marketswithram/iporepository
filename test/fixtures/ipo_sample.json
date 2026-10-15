@@ -1,0 +1,214 @@
+{
+  "ipo_details": {
+    "ipo_name": "Acme Dynamics Limited IPO",
+    "company_name": "Acme Dynamics Limited",
+    "status": "Open",
+    "ipo_type": "Mainboard",
+    "market_segment": "NSE, BSE",
+    "exchanges": ["NSE", "BSE"],
+    "sale_type": "Book Built Issue IPO",
+    "issue_type": "Fresh Issue & Offer for Sale",
+    "face_value": 10,
+    "minimum_price": 140,
+    "maximum_price": 150,
+    "currency": "INR",
+    "cutoff_price": 150,
+    "lot_size": 100,
+    "minimum_investment": 15000,
+    "issue_size": "₹ 500.00 Cr",
+    "fresh_issue": false,
+    "ofs_percentage": 100,
+    "ofs_shares": 33333333,
+    "pre_issue_shares": 100000000,
+    "post_issue_shares": 100000000,
+    "company_proceeds": 0
+  },
+  "ipo_dates": {
+    "opening_date": "2026-10-20",
+    "closing_date": "2026-10-24",
+    "allotment_date": "2026-10-27",
+    "refund_date": "2026-10-28",
+    "demat_credit_date": "2026-10-28",
+    "listing_date": "2026-10-29"
+  },
+  "gmp": {
+    "premium": 45,
+    "premium_percentage": 30.0,
+    "currency": "INR",
+    "estimated_listing_price": 195,
+    "estimated_listing_price_formula": "150 + 45 = 195",
+    "estimated_profit_per_lot": 4500,
+    "lot_size": 100,
+    "source_update_label": "2m ago",
+    "official_exchange_data": false,
+    "disclaimer": "GMP is completely unofficial and based on market rumors. It does not guarantee any listing profit."
+  },
+  "subscription": {
+    "total_subscription": "14.25x",
+    "subscription_period_label": "Day 3 (Final)",
+    "retail": "8.40x",
+    "nii": "18.20x",
+    "qib": "22.50x",
+    "source_tracker_status": "Closed",
+    "disclaimer": "Subscription numbers are consolidated from BSE and NSE bidding logs."
+  },
+  "reservation_quota": {
+    "qib_percentage": 50.0,
+    "retail_percentage": 35.0,
+    "nii_percentage": 15.0
+  },
+  "issue_details": {
+    "total_issue_size": "₹ 500.00 Cr",
+    "retail_issue_size": "₹ 175.00 Cr",
+    "fresh_issue_amount": "₹ 0.00 Cr",
+    "ofs_amount": "₹ 500.00 Cr",
+    "objects_of_the_issue": [
+      "To carry out the Offer for Sale of up to 33,333,333 Equity Shares by the Selling Shareholders",
+      "Achieve the benefits of listing the Equity Shares on the Stock Exchanges"
+    ],
+    "lead_managers": [
+      "Kotak Mahindra Capital Company Limited",
+      "ICICI Securities Limited",
+      "Axis Capital Limited"
+    ],
+    "registrar": {
+      "name": "Link Intime India Private Ltd",
+      "phone": "+91-22-4918 6270",
+      "email": "acme.ipo@linkintime.co.in",
+      "website": "https://linkintime.co.in"
+    }
+  },
+  "lot_size_details": [
+    {
+      "category": "Retail (Min)",
+      "lots": 1,
+      "shares": 100,
+      "amount": 15000
+    },
+    {
+      "category": "Retail (Max)",
+      "lots": 13,
+      "shares": 1300,
+      "amount": 195000
+    },
+    {
+      "category": "sHNI (Min)",
+      "lots": 14,
+      "shares": 1400,
+      "amount": 210000
+    },
+    {
+      "category": "bHNI (Min)",
+      "lots": 67,
+      "shares": 6700,
+      "amount": 1005000
+    }
+  ],
+  "kpi": {
+    "reporting_periods": ["FY23", "FY24", "FY25"],
+    "roe": "21.50%",
+    "roce": "26.80%",
+    "debt_to_equity": "0.14",
+    "ronw": "19.80%",
+    "pat_margin": "14.20%",
+    "ebitda_margin": "22.10%",
+    "price_to_book": "4.20",
+    "pre_ipo_eps": "11.20",
+    "post_ipo_eps": "11.20",
+    "pre_ipo_pe": "13.39",
+    "post_ipo_pe": "13.39",
+    "pre_ipo_promoter_holding": "85.40%",
+    "post_ipo_promoter_holding": "68.20%",
+    "market_capitalization": "₹ 1,500.00 Cr"
+  },
+  "financials": {
+    "currency": "INR",
+    "unit": "₹ in Crores",
+    "periods": {
+      "FY23": {
+        "total_income": 312.45,
+        "net_profit": 42.10,
+        "ebitda": 68.30,
+        "borrowings": 12.00,
+        "roe": "18.2%",
+        "roce": "22.5%",
+        "assets": 280.50
+      },
+      "FY24": {
+        "total_income": 425.60,
+        "net_profit": 58.40,
+        "ebitda": 94.10,
+        "borrowings": 10.50,
+        "roe": "20.1%",
+        "roce": "24.9%",
+        "assets": 365.20
+      },
+      "FY25": {
+        "total_income": 560.80,
+        "net_profit": 79.50,
+        "ebitda": 124.00,
+        "borrowings": 8.20,
+        "roe": "21.5%",
+        "roce": "26.8%",
+        "assets": 490.10
+      }
+    }
+  },
+  "company_details": {
+    "industry": "Industrial Precision & Flow Controls",
+    "incorporation_month": "March 2012",
+    "manufacturing_locations": [
+      "Sanand, Gujarat",
+      "Pune, Maharashtra",
+      "Chennai, Tamil Nadu"
+    ],
+    "countries_exported_to": [
+      "United States",
+      "Germany",
+      "Japan",
+      "United Arab Emirates"
+    ],
+    "ul_listed_certifications": ["UL-199", "UL-260"],
+    "fm_approved_certifications": ["FM Class 1210"],
+    "customer_count": 480,
+    "facilities": [
+      "R&D Flow Dynamics Lab (Sanand)",
+      "Automated Testing Facility (Pune)"
+    ],
+    "major_projects": [
+      "Metro Transit Ventilation Automation",
+      "National Petrochemical Fluid Grid"
+    ],
+    "promoters": [
+      "Rajesh Sharma",
+      "Anita Sharma",
+      "Sharma Family Trust"
+    ],
+    "summary": "Acme Dynamics Limited is a leading manufacturer of high-precision fluid valves and flow-control systems with tier-1 industrial clients across 20+ countries."
+  },
+  "company_contact": {
+    "address": "Plot 42, GIDC Industrial Estate, Sanand, Ahmedabad, Gujarat - 382110",
+    "phone": "+91-79-6789-0123",
+    "email": "investors@acmedynamics.com",
+    "website": "https://www.acmedynamics.com"
+  },
+  "official_documents": {
+    "drhp_link": "https://www.sebi.gov.in/filings/public-issues/acme-drhp.pdf",
+    "rhp_link": "https://www.bseindia.com/downloads/ipo/acme-rhp.pdf",
+    "document_notes": "Red Herring Prospectus dated October 14, 2026 registered with ROC Gujarat."
+  },
+  "faq": [
+    {
+      "question": "What is the price band for Acme Dynamics IPO?",
+      "answer": "The price band is fixed between ₹140 and ₹150 per equity share of face value ₹10 each."
+    },
+    {
+      "question": "What is the minimum lot size for retail investors?",
+      "answer": "The minimum lot size is 100 shares, requiring an investment of ₹15,000 at the upper price band."
+    },
+    {
+      "question": "When will the IPO shares list on stock exchanges?",
+      "answer": "The shares are slated to list on BSE and NSE on October 29, 2026."
+    }
+  ]
+}

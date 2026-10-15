@@ -10,6 +10,7 @@ import Home         from './pages/public/Home'
 import About        from './pages/public/About'
 import HowItWorks   from './pages/public/HowItWorks'
 import PublicIpos   from './pages/public/PublicIpos'
+import PublicIpoDetails from './pages/public/PublicIpoDetails'
 import Login        from './pages/public/Login'
 import Register     from './pages/public/Register'
 
@@ -26,6 +27,7 @@ import IpoList        from './pages/admin/ipos/IpoList'
 import CreateIpo      from './pages/admin/ipos/CreateIpo'
 import IpoDetails     from './pages/admin/ipos/IpoDetails'
 import ImportResults  from './pages/admin/ipos/ImportResults'
+import AutomatedSettlement from './pages/admin/ipos/AutomatedSettlement'
 import AdminUsers     from './pages/admin/Users'
 import UserDetails    from './pages/admin/UserDetails'
 import CreateUser     from './pages/admin/CreateUser'
@@ -44,6 +46,7 @@ export default function App() {
             <Route path="/about"        element={<About />} />
             <Route path="/how-it-works" element={<HowItWorks />} />
             <Route path="/ipos"         element={<PublicIpos />} />
+            <Route path="/ipos/:ipoId"  element={<PublicIpoDetails />} />
             <Route path="/login"    element={<PublicOnlyRoute><Login /></PublicOnlyRoute>} />
             <Route path="/register" element={<PublicOnlyRoute><Register /></PublicOnlyRoute>} />
           </Route>
@@ -71,6 +74,8 @@ export default function App() {
             <Route path="ipos/create"           element={<CreateIpo />} />
             <Route path="ipos/:ipoId"           element={<IpoDetails />} />
             <Route path="ipos/:ipoId/results"   element={<ImportResults />} />
+            <Route path="ipos/:ipoId/automated-settlement" element={<AutomatedSettlement />} />
+            <Route path="ipos/automated-settlement"        element={<AutomatedSettlement />} />
             <Route path="users"                 element={<AdminUsers />} />
             <Route path="users/create"          element={<CreateUser />} />
             <Route path="users/:userId"         element={<UserDetails />} />

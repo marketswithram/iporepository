@@ -2,20 +2,70 @@ import { supabase } from '../lib/supabaseClient'
 
 // ---- PUBLIC ----
 export async function getOpenIpos() {
-  const { data, error } = await supabase
-    .from('ipos').select('id, ipo_code, ipo_name, ipo_price, start_date, end_date, status')
-    .eq('status', 'OPEN').order('created_at', { ascending: false })
-  if (error) throw error
-  return data ?? []
+  try {
+    const { data, error } = await supabase
+      .from('ipos')
+      .select(`
+        id, ipo_code, ipo_name, ipo_price, start_date, end_date, status, created_at,
+        ipo_details (
+          company_name, ipo_type, market_segment, issue_size, lot_size, min_investment, gmp_data
+        )
+      `)
+      .eq('status', 'OPEN')
+      .order('created_at', { ascending: false })
+
+    if (error) throw error
+
+    return (data ?? []).map(item => ({
+      ...item,
+      details: Array.isArray(item.ipo_details) ? item.ipo_details[0] : item.ipo_details
+    }))
+  } catch (err) {
+    // Graceful fallback if ipo_details join is unavailable or fails
+    const { data: fallbackData, error: fallbackError } = await supabase
+      .from('ipos')
+      .select('id, ipo_code, ipo_name, ipo_price, start_date, end_date, status, created_at')
+      .eq('status', 'OPEN')
+      .order('created_at', { ascending: false })
+
+    if (fallbackError) throw fallbackError
+    return fallbackData ?? []
+  }
 }
 
 export async function getPublicIpos({ page = 1, pageSize = 10 } = {}) {
   const from = (page - 1) * pageSize
-  const { data, error, count } = await supabase
-    .from('ipos').select('id, ipo_code, ipo_name, ipo_price, start_date, end_date, status', { count: 'exact' })
-    .eq('status', 'OPEN').order('created_at', { ascending: false }).range(from, from + pageSize - 1)
-  if (error) throw error
-  return { data: data ?? [], count: count ?? 0 }
+  try {
+    const { data, error, count } = await supabase
+      .from('ipos')
+      .select(`
+        id, ipo_code, ipo_name, ipo_price, start_date, end_date, status, created_at,
+        ipo_details (
+          company_name, ipo_type, market_segment, issue_size, lot_size, min_investment, gmp_data
+        )
+      `, { count: 'exact' })
+      .eq('status', 'OPEN')
+      .order('created_at', { ascending: false })
+      .range(from, from + pageSize - 1)
+
+    if (error) throw error
+
+    const mapped = (data ?? []).map(item => ({
+      ...item,
+      details: Array.isArray(item.ipo_details) ? item.ipo_details[0] : item.ipo_details
+    }))
+    return { data: mapped, count: count ?? 0 }
+  } catch (err) {
+    const { data: fallbackData, error: fallbackError, count } = await supabase
+      .from('ipos')
+      .select('id, ipo_code, ipo_name, ipo_price, start_date, end_date, status, created_at', { count: 'exact' })
+      .eq('status', 'OPEN')
+      .order('created_at', { ascending: false })
+      .range(from, from + pageSize - 1)
+
+    if (fallbackError) throw fallbackError
+    return { data: fallbackData ?? [], count: count ?? 0 }
+  }
 }
 
 // ---- USER ----
@@ -323,21 +373,167 @@ export async function getAdminIpoDetail(ipoId) {
   const { data: ipo, error } = await supabase
     .from('ipos').select('*, profiles!created_by(username, full_name)').eq('id', ipoId).single()
   if (error) throw error
+
+  let details = null
+  try {
+    const { data: d, error: dErr } = await supabase
+      .from('ipo_details')
+      .select('*')
+      .eq('ipo_id', ipoId)
+      .maybeSingle()
+    if (!dErr && d) {
+      details = d
+    }
+  } catch (dErr) {
+    console.warn('Error reading ipo_details in getAdminIpoDetail:', dErr)
+  }
+
   const [{ count: total }, { count: investors }, { count: accountHolders }] = await Promise.all([
     supabase.from('ipo_participations').select('*', { count: 'exact', head: true }).eq('ipo_id', ipoId),
     supabase.from('ipo_participations').select('*', { count: 'exact', head: true }).eq('ipo_id', ipoId).eq('participation_type', 'INVESTOR'),
     supabase.from('ipo_participations').select('*', { count: 'exact', head: true }).eq('ipo_id', ipoId).eq('participation_type', 'ACCOUNT_HOLDER'),
   ])
-  return { ...ipo, totalParticipants: total ?? 0, investorCount: investors ?? 0, accountHolderCount: accountHolders ?? 0 }
+
+  return { ...ipo, details: details ?? null, totalParticipants: total ?? 0, investorCount: investors ?? 0, accountHolderCount: accountHolders ?? 0 }
 }
 
-export async function createIpo({ ipoName, ipoPrice, startDate, endDate, createdBy }) {
-  const { data, error } = await supabase
+export async function createIpo({ ipoName, ipoPrice, startDate, endDate, status = 'OPEN', createdBy }) {
+  return createIpoWithDetails({
+    ipoName,
+    ipoPrice,
+    startDate,
+    endDate,
+    status: status || 'OPEN',
+    createdBy,
+    details: null,
+  })
+}
+
+export async function createIpoWithDetails({ ipoName, ipoPrice, startDate, endDate, status = 'OPEN', createdBy, details = null }) {
+  // 1. Try atomic RPC create_ipo_with_details
+  try {
+    const { data: rpcData, error: rpcError } = await supabase.rpc('create_ipo_with_details', {
+      p_ipo_name: ipoName.trim(),
+      p_ipo_price: ipoPrice,
+      p_start_date: startDate || null,
+      p_end_date: endDate || null,
+      p_status: status || 'OPEN',
+      p_created_by: createdBy,
+      p_details: details || {},
+    })
+
+    if (!rpcError && rpcData) {
+      return rpcData
+    }
+    if (rpcError && rpcError.code !== '42883' && !rpcError.message?.includes('does not exist')) {
+      throw rpcError
+    }
+  } catch (err) {
+    if (err.code !== '42883' && !err.message?.includes('does not exist')) {
+      throw err
+    }
+  }
+
+  // 2. Fallback: manual sequential write if RPC has not been executed yet
+  const { data: ipo, error: ipoErr } = await supabase
     .from('ipos')
-    .insert({ ipo_name: ipoName.trim(), ipo_price: ipoPrice, start_date: startDate, end_date: endDate, status: 'DRAFT', created_by: createdBy })
-    .select().single()
-  if (error) throw error
-  return data
+    .insert({
+      ipo_name: ipoName.trim(),
+      ipo_price: ipoPrice,
+      start_date: startDate,
+      end_date: endDate,
+      status: status || 'OPEN',
+      created_by: createdBy,
+    })
+    .select()
+    .single()
+
+  if (ipoErr) throw ipoErr
+
+  if (details && ipo?.id) {
+    try {
+      const detailsPayload = {
+        ipo_id: ipo.id,
+        company_name: details.company_name || ipoName,
+        ipo_type: details.ipo_type || null,
+        market_segment: details.market_segment || null,
+        exchanges: details.exchanges || [],
+        sale_type: details.sale_type || null,
+        issue_type: details.issue_type || null,
+        face_value: details.face_value || null,
+        min_price: details.min_price || null,
+        max_price: details.max_price || null,
+        cutoff_price: details.cutoff_price || null,
+        lot_size: details.lot_size || null,
+        min_investment: details.min_investment || null,
+        issue_size: details.issue_size || null,
+        fresh_issue: details.fresh_issue !== undefined ? details.fresh_issue : null,
+        ofs_percentage: details.ofs_percentage || null,
+        ofs_shares: details.ofs_shares || null,
+        pre_issue_shares: details.pre_issue_shares || null,
+        post_issue_shares: details.post_issue_shares || null,
+        company_proceeds: details.company_proceeds !== undefined ? details.company_proceeds : null,
+        currency: details.currency || 'INR',
+        allotment_date: details.allotment_date || null,
+        refund_date: details.refund_date || null,
+        demat_credit_date: details.demat_credit_date || null,
+        listing_date: details.listing_date || null,
+        gmp_data: details.gmp || {},
+        subscription_data: details.subscription || {},
+        reservation_quota: details.reservation_quota || {},
+        issue_details: details.issue_details || {},
+        lot_size_details: details.lot_size_details || [],
+        kpi_data: details.kpi || {},
+        financials_data: details.financials || {},
+        company_details: details.company_details || {},
+        company_contact: details.company_contact || {},
+        official_documents: details.official_documents || {},
+        faq_data: details.faq || [],
+        raw_json: details.raw_json || null,
+        source: details.source || 'IPO Gyani',
+      }
+
+      const { error: detailsErr } = await supabase
+        .from('ipo_details')
+        .insert(detailsPayload)
+
+      if (detailsErr) {
+        console.warn('Notice: ipo_details write failed (schema migration 008 may be required):', detailsErr.message)
+      }
+    } catch (dErr) {
+      console.warn('Error inserting ipo_details:', dErr)
+    }
+  }
+
+  return ipo
+}
+
+export async function getIpoWithDetails(ipoId) {
+  const { data: ipo, error: ipoError } = await supabase
+    .from('ipos')
+    .select('*, profiles!created_by(username, full_name)')
+    .eq('id', ipoId)
+    .single()
+
+  if (ipoError) throw ipoError
+  if (!ipo) return null
+
+  let details = null
+  try {
+    const { data: detailsData, error: detailsError } = await supabase
+      .from('ipo_details')
+      .select('*')
+      .eq('ipo_id', ipoId)
+      .maybeSingle()
+
+    if (!detailsError && detailsData) {
+      details = detailsData
+    }
+  } catch (err) {
+    console.warn('Notice: ipo_details table query error:', err)
+  }
+
+  return { ...ipo, details }
 }
 
 export async function updateIpoStatus(ipoId, status) {
@@ -385,6 +581,68 @@ export async function submitIpoResults({ ipoId, importId, overallProfit, results
   })
   if (error) throw error
   return data
+}
+
+export async function recordSettlementRun({
+  ipoId,
+  publishedBy,
+  effectiveSellingPrice,
+  totalSellingCharges,
+  totalAllottedLots,
+  totalProfit,
+  totalTaxReserve,
+  distributableProfit,
+  totalContributed,
+  sumProfitShares,
+  roundingResidual,
+  taxRate,
+  selectedApplicants,
+  settlementSummary,
+  status = 'PUBLISHED',
+}) {
+  try {
+    const { data, error } = await supabase
+      .from('ipo_settlement_runs')
+      .insert({
+        ipo_id:                  ipoId,
+        published_by:            publishedBy,
+        effective_selling_price: effectiveSellingPrice,
+        total_selling_charges:   totalSellingCharges,
+        total_allotted_lots:     totalAllottedLots,
+        total_profit:            totalProfit,
+        total_tax_reserve:       totalTaxReserve,
+        distributable_profit:    distributableProfit,
+        total_contributed:       totalContributed,
+        sum_profit_shares:       sumProfitShares,
+        rounding_residual:       roundingResidual,
+        tax_rate:                taxRate,
+        selected_applicants:     selectedApplicants,
+        settlement_summary:      settlementSummary,
+        status,
+      })
+      .select()
+      .maybeSingle()
+    if (!error && data) return data
+  } catch (err) {
+    console.warn('ipo_settlement_runs insert skipped or failed:', err)
+  }
+  return null
+}
+
+export async function getLatestSettlementRun(ipoId) {
+  try {
+    const { data, error } = await supabase
+      .from('ipo_settlement_runs')
+      .select('*')
+      .eq('ipo_id', ipoId)
+      .order('published_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (!error && data) return data
+  } catch (err) {
+    console.warn('ipo_settlement_runs query skipped or failed:', err)
+  }
+  return null
 }
 
 export async function getAdminDashboardStats() {
