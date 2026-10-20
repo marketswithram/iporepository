@@ -429,6 +429,7 @@ export default function IpoDetails() {
                   <th>#</th>
                   <th>Account Holder (Applied From)</th>
                   <th>Actual Investor</th>
+                  <th>Application No.</th>
                   <th>Applied On</th>
                 </tr>
               </thead>
@@ -450,6 +451,7 @@ export default function IpoDetails() {
                         <span className="text-xs text-gray-400">—</span>
                       )}
                     </td>
+                    <td><code className="text-xs bg-gray-100 px-1.5 py-0.5 rounded">{p.application_number ?? '—'}</code></td>
                     <td className="text-xs text-gray-400">{formatDateTime(p.created_at)}</td>
                   </tr>
                 ))}

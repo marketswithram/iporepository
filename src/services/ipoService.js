@@ -190,7 +190,8 @@ export async function submitParticipation({ ipoId, participationType, applicatio
       ipo_id: ipoId,
       user_id: userId,
       participation_type: participationType,
-      application_number: participationType === 'INVESTOR' ? applicationNumber?.trim() : null,
+      // Both investors and account holders now record an application number
+      application_number: applicationNumber?.trim() || null,
       investor_user_id: investorId,
       amount_contributed: amountContributed ?? null,
     })
@@ -560,6 +561,22 @@ export async function getIpoParticipants(ipoId, { type = null } = {}) {
   const { data, error } = await query
   if (error) throw error
   return data ?? []
+}
+
+/**
+ * Add / change / clear the signed-in user's own PAN (empty string clears it).
+ * Backed by the update_my_pan RPC (migration 012).
+ */
+export async function updateMyPan(pan) {
+  const { data, error } = await supabase.rpc('update_my_pan', { p_pan: pan ?? '' })
+  if (error) {
+    if (error.code === 'PGRST202' || /could not find the function/i.test(error.message || '')) {
+      throw new Error('PAN support needs database migration 012. Ask the administrator to run supabase/migrations/012_profile_pan_number.sql.')
+    }
+    throw error
+  }
+  if (data?.success === false) throw new Error(data.error || 'Could not update PAN.')
+  return data
 }
 
 /**

@@ -35,11 +35,18 @@ export function AuthProvider({ children }) {
     return () => subscription.unsubscribe()
   }, [fetchProfile])
 
-  const signUp = async ({ email, password, username, fullName }) => {
+  const signUp = async ({ email, password, username, fullName, panNumber }) => {
     return supabase.auth.signUp({
       email,
       password,
-      options: { data: { username, full_name: fullName } },
+      options: {
+        data: {
+          username,
+          full_name: fullName,
+          // Optional — only sent when the user entered a PAN
+          ...(panNumber ? { pan_number: panNumber } : {}),
+        },
+      },
     })
   }
 
