@@ -45,12 +45,12 @@ export function formatDateTime(value) {
 }
 
 export function getIpoStatusBadgeClass(status) {
-  const map = { DRAFT: 'badge-gray', OPEN: 'badge-green', CLOSED: 'badge-yellow', PROCESSING: 'badge-blue', COMPLETED: 'badge-purple', CANCELLED: 'badge-red' }
+  const map = { DRAFT: 'badge-gray', OPEN: 'badge-green', UPCOMING: 'badge-blue', CLOSED: 'badge-yellow', PROCESSING: 'badge-blue', COMPLETED: 'badge-purple', CANCELLED: 'badge-red' }
   return map[status] ?? 'badge-gray'
 }
 
 export function getIpoStatusLabel(status) {
-  const map = { DRAFT: 'Draft', OPEN: 'Open', CLOSED: 'Closed', PROCESSING: 'Processing', COMPLETED: 'Completed', CANCELLED: 'Cancelled' }
+  const map = { DRAFT: 'Draft', OPEN: 'Open', UPCOMING: 'Upcoming', CLOSED: 'Closed', PROCESSING: 'Processing', COMPLETED: 'Completed', CANCELLED: 'Cancelled' }
   return map[status] ?? status
 }
 

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { getIpoWithDetails } from '../../services/ipoService'
-import { formatCurrency, formatDate } from '../../utils/formatters'
+import { formatCurrency, formatDate, getIpoStatusBadgeClass, getIpoStatusLabel } from '../../utils/formatters'
 
 export default function PublicIpoDetails() {
   const { ipoId } = useParams()
@@ -23,8 +23,8 @@ export default function PublicIpoDetails() {
           setError('IPO not found.')
           return
         }
-        // If not admin and not OPEN, do not expose to public
-        if (!isAdmin && data.status !== 'OPEN') {
+        // If not admin and status is DRAFT or CANCELLED, do not expose to public
+        if (!isAdmin && (data.status === 'DRAFT' || data.status === 'CANCELLED')) {
           setError('This IPO is currently not published for public viewing.')
           return
         }
@@ -56,7 +56,7 @@ export default function PublicIpoDetails() {
         <p className="text-4xl mb-3">🔍</p>
         <h2 className="text-xl font-bold text-gray-800 mb-2">IPO Details Unavailable</h2>
         <p className="text-gray-500 mb-6">{error || 'The requested IPO could not be found.'}</p>
-        <Link to="/ipos" className="btn btn-primary">← Browse Open IPOs</Link>
+        <Link to="/#ipos" className="btn btn-primary">← Browse All IPOs</Link>
       </div>
     )
   }
@@ -93,10 +93,12 @@ export default function PublicIpoDetails() {
     <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-6 animate-fade-in">
       {/* Breadcrumb & Navigation */}
       <div className="flex items-center justify-between">
-        <Link to="/ipos" className="text-sm text-blue-600 hover:underline flex items-center gap-1">
-          <span>←</span> Back to All IPOs
+        <Link to="/#ipos" className="text-sm text-blue-600 hover:underline flex items-center gap-1 font-medium">
+          <span>←</span> Back to IPO Hub
         </Link>
-        <span className="badge badge-green">Open for Bidding</span>
+        <span className={getIpoStatusBadgeClass(ipo.status)}>
+          {getIpoStatusLabel(ipo.status)}
+        </span>
       </div>
 
       {/* Hero Header */}

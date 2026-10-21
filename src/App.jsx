@@ -43,9 +43,9 @@ export default function App() {
           {/* PUBLIC */}
           <Route element={<PublicLayout />}>
             <Route path="/"             element={<Home />} />
-            <Route path="/about"        element={<About />} />
-            <Route path="/how-it-works" element={<HowItWorks />} />
-            <Route path="/ipos"         element={<PublicIpos />} />
+            <Route path="/about"        element={<Navigate to="/#about" replace />} />
+            <Route path="/how-it-works" element={<Navigate to="/#how-it-works" replace />} />
+            <Route path="/ipos"         element={<Navigate to="/#ipos" replace />} />
             <Route path="/ipos/:ipoId"  element={<PublicIpoDetails />} />
             <Route path="/login"    element={<PublicOnlyRoute><Login /></PublicOnlyRoute>} />
             <Route path="/register" element={<PublicOnlyRoute><Register /></PublicOnlyRoute>} />

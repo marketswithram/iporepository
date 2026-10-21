@@ -65,7 +65,39 @@ export async function getPublicIpos({ page = 1, pageSize = 10 } = {}) {
 
     if (fallbackError) throw fallbackError
     return { data: fallbackData ?? [], count: count ?? 0 }
-  }
+  }
+}
+
+export async function getAllPublicIpos() {
+  try {
+    const { data, error } = await supabase
+      .from('ipos')
+      .select(`
+        id, ipo_code, ipo_name, ipo_price, start_date, end_date, status, overall_profit, completed_at, created_at,
+        ipo_details (
+          company_name, ipo_type, market_segment, issue_size, lot_size, min_investment, gmp_data,
+          allotment_date, refund_date, demat_credit_date, listing_date
+        )
+      `)
+      .not('status', 'in', '("DRAFT","CANCELLED")')
+      .order('created_at', { ascending: false })
+
+    if (error) throw error
+
+    return (data ?? []).map(item => ({
+      ...item,
+      details: Array.isArray(item.ipo_details) ? item.ipo_details[0] : item.ipo_details
+    }))
+  } catch (err) {
+    const { data: fallbackData, error: fallbackError } = await supabase
+      .from('ipos')
+      .select('id, ipo_code, ipo_name, ipo_price, start_date, end_date, status, overall_profit, completed_at, created_at')
+      .not('status', 'in', '("DRAFT","CANCELLED")')
+      .order('created_at', { ascending: false })
+
+    if (fallbackError) throw fallbackError
+    return fallbackData ?? []
+  }
 }
 
 // ---- USER ----
